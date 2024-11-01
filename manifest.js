@@ -11,8 +11,8 @@ const manifest = {
   description: packageJson.description,
   permissions: ['storage', 'tabs', 'scripting', 'alarms', 'downloads'],
   host_permissions: [
-    'https://amazon.com/*',
-    'https://www.amazon.com/*',
+    'https://amazon.ca/*',
+    'https://www.amazon.ca/*',
     'https://app.monarchmoney.com/*',
     'https://api.monarchmoney.com/*',
   ],

@@ -5,8 +5,8 @@ import * as Throttle from 'promise-parallel-throttle';
 import { debugLog } from '../storages/debugStorage';
 import { AuthStatus } from '../storages/appStorage';
 
-const ORDER_PAGES_URL = 'https://www.amazon.com/gp/css/order-history?disableCsd=no-js';
-const ORDER_DETAILS_URL = 'https://www.amazon.com/gp/your-account/order-details';
+const ORDER_PAGES_URL = 'https://www.amazon.ca/gp/css/order-history?disableCsd=no-js';
+const ORDER_DETAILS_URL = 'https://www.amazon.ca/gp/your-account/order-details';
 
 export type AmazonInfo = {
   status: AuthStatus;
