@@ -14,6 +14,14 @@ export function ManualBackfillClean() {
   const [year, setYear] = useState<string | undefined>(undefined);
   const [dryRun, setDryRun] = useState<boolean>(true);
 
+  const handleToggle = useCallback(
+    (checked: boolean) => {
+      console.log('🔄 Safe Mode toggle changed:', { from: dryRun, to: checked });
+      setDryRun(checked);
+    },
+    [dryRun],
+  );
+
   const actionOngoing = useMemo(
     () => progress.phase !== ProgressPhase.Complete && progress.phase !== ProgressPhase.Idle,
     [progress],
@@ -65,11 +73,12 @@ export function ManualBackfillClean() {
       <div className={`border-2 rounded-lg p-4 ${dryRun ? 'bg-blue-50 border-blue-400' : 'bg-red-50 border-red-400'}`}>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-bold text-gray-900">Safe Mode (Dry-Run)</span>
-          <ToggleSwitch checked={dryRun} onChange={setDryRun} />
+          <ToggleSwitch checked={dryRun} onChange={handleToggle} />
         </div>
         <p className={`text-xs font-medium ${dryRun ? 'text-blue-800' : 'text-red-800'}`}>
           {dryRun ? '✓ Preview only - No Monarch changes' : '⚠️ LIVE MODE - Will update Monarch!'}
         </p>
+        <p className="text-xs text-gray-600 mt-1">Current: {dryRun ? 'Safe Mode ON' : 'LIVE MODE ON'}</p>
       </div>
 
       {/* Run Button */}
