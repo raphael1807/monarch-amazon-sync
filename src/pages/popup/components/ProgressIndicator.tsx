@@ -2,46 +2,61 @@ import useStorage from '@root/src/shared/hooks/useStorage';
 import appStorage, { mapFailureReasonToMessage } from '@root/src/shared/storages/appStorage';
 import { ProgressPhase, ProgressState } from '@root/src/shared/storages/progressStorage';
 import { Button, Progress, Spinner } from 'flowbite-react';
-import { useCallback } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { FaTimesCircle } from 'react-icons/fa';
 import { LuCircleSlash } from 'react-icons/lu';
 import { RiCheckboxCircleFill } from 'react-icons/ri';
 import { stringify } from 'csv-stringify/browser/esm/sync';
 import transactionStorage from '@root/src/shared/storages/transactionStorage';
-import { matchTransactions } from '@root/src/shared/api/matchUtil';
+import { matchTransactions, MatchedTransaction } from '@root/src/shared/api/matchUtil';
+import MatchPreview from './MatchPreview';
 
 export function ProgressIndicator({ progress }: { progress: ProgressState }) {
   const { lastSync } = useStorage(appStorage);
+  const [matches, setMatches] = useState<MatchedTransaction[]>([]);
+  const [showPreview, setShowPreview] = useState(false);
 
   const lastSyncTime = lastSync ? new Date(lastSync.time).toLocaleString() : 'Never';
 
+  // Load matches when sync completes
+  useEffect(() => {
+    const loadMatches = async () => {
+      if (lastSync?.success && lastSync?.transactionsUpdated > 0) {
+        const appData = await appStorage.get();
+        const transactions = await transactionStorage.get();
+
+        if (transactions && transactions.transactions && transactions.orders) {
+          const calculatedMatches = matchTransactions(
+            transactions.transactions,
+            transactions.orders,
+            appData.options.overrideTransactions,
+          );
+          setMatches(calculatedMatches);
+        }
+      }
+    };
+    loadMatches();
+  }, [lastSync]);
+
   const dryRunDownload = useCallback(async () => {
-    const appData = await appStorage.get();
-    const transactions = await transactionStorage.get();
+    if (matches.length === 0) return;
 
-    if (!lastSync || !transactions || !lastSync?.dryRun) {
-      return;
-    }
-
-    const matches = matchTransactions(
-      transactions.transactions,
-      transactions.orders,
-      appData.options.overrideTransactions,
-    );
-
-    // Create detailed CSV with item details
-    const contents = matches.map(match => {
+    // Create detailed CSV with item details and confidence
+    const contents = matches.map((match, index) => {
       const itemsList = match.items
         .map(item => `${item.quantity}x ${item.title} - $${item.price.toFixed(2)}`)
         .join(' | ');
       return {
+        '#': index + 1,
+        Confidence: `${match.confidence || 100}%`,
         'Order ID': match.amazon.id,
         'Order Date': match.amazon.date,
-        'Monarch Transaction Date': match.monarch.date,
+        'Monarch Date': match.monarch.date,
         Amount: `$${match.amazon.amount.toFixed(2)}`,
         'Monarch Transaction ID': match.monarch.id,
         Items: itemsList,
         Refund: match.amazon.refund ? 'Yes' : 'No',
+        'Match Reason': match.reason || 'Exact match',
       };
     });
 
@@ -54,7 +69,7 @@ export function ProgressIndicator({ progress }: { progress: ProgressState }) {
       url: url,
       filename: `monarch-amazon-sync-${year}.csv`,
     });
-  }, [lastSync]);
+  }, [matches]);
 
   const inProgress = progress.phase !== ProgressPhase.Complete && progress.phase !== ProgressPhase.Idle;
   return (
@@ -62,33 +77,44 @@ export function ProgressIndicator({ progress }: { progress: ProgressState }) {
       {inProgress ? (
         <ProgressSpinner progress={progress} />
       ) : lastSync?.success && lastSync?.transactionsUpdated > 0 ? (
-        <div className="flex flex-col items-center gap-3 p-4">
-          <RiCheckboxCircleFill className="text-green-500" size={56} />
-          <span className="text-xl font-bold text-green-700">✓ Complete!</span>
+        <div className="flex flex-col gap-2 p-2">
+          <div className="flex flex-col items-center gap-2 py-2">
+            <RiCheckboxCircleFill className="text-green-500" size={48} />
+            <span className="text-lg font-bold text-green-700">✓ Complete!</span>
 
-          <div className="text-sm text-gray-700 text-center space-y-1 bg-gray-50 p-3 rounded-lg w-full">
-            <div className="font-medium">📊 Results:</div>
-            <div>📦 {lastSync.amazonOrders} Amazon orders</div>
-            <div>💳 {lastSync.monarchTransactions} Monarch transactions</div>
-            <div className="font-semibold text-green-600">✨ {lastSync.transactionsUpdated} matches</div>
+            <div className="text-xs text-gray-700 text-center space-y-1 bg-gray-50 p-2 rounded w-full">
+              <div>
+                📦 {lastSync.amazonOrders} orders • 💳 {lastSync.monarchTransactions} transactions
+              </div>
+              <div className="font-semibold text-green-600">✨ {lastSync.transactionsUpdated} matches</div>
+            </div>
           </div>
 
-          {lastSync.dryRun ? (
-            <div className="flex flex-col items-center gap-3 mt-2 p-4 bg-blue-100 border-2 border-blue-300 rounded-lg w-full">
-              <span className="text-lg font-bold text-blue-800">🔍 DRY-RUN MODE</span>
-              <span className="text-sm text-blue-700 text-center font-medium">⚠️ No Monarch data was modified</span>
-              <Button size="lg" color="success" className="w-full font-bold text-lg" onClick={dryRunDownload}>
-                📥 DOWNLOAD CSV REPORT
+          {/* Show Preview Toggle */}
+          {matches.length > 0 && (
+            <div className="border-t pt-2">
+              <Button size="sm" color="light" className="w-full mb-2" onClick={() => setShowPreview(!showPreview)}>
+                {showPreview ? '▼ Hide Matches' : '▶ View Matches'}
               </Button>
-              <span className="text-xs text-gray-600 text-center">Review the changes before running live sync</span>
+
+              {showPreview && <MatchPreview matches={matches} onDownloadCsv={dryRunDownload} />}
+            </div>
+          )}
+
+          {lastSync.dryRun ? (
+            <div className="flex flex-col gap-2 p-3 bg-blue-100 border-2 border-blue-300 rounded-lg">
+              <span className="text-sm font-bold text-blue-800 text-center">🔍 DRY-RUN MODE</span>
+              <span className="text-xs text-blue-700 text-center">⚠️ No Monarch data was modified</span>
+              {!showPreview && (
+                <Button size="md" color="success" className="w-full font-bold" onClick={dryRunDownload}>
+                  📥 DOWNLOAD CSV
+                </Button>
+              )}
             </div>
           ) : (
-            <div className="mt-2 p-3 bg-green-100 border-2 border-green-300 rounded-lg w-full">
-              <span className="text-base font-bold text-green-800 text-center block">
-                ✓ Updated {lastSync.transactionsUpdated} Monarch transactions!
-              </span>
-              <span className="text-xs text-green-700 text-center block mt-1">
-                Check Monarch to see your updated transaction notes
+            <div className="p-2 bg-green-100 border-2 border-green-300 rounded-lg">
+              <span className="text-sm font-bold text-green-800 text-center block">
+                ✓ Updated {lastSync.transactionsUpdated} transactions!
               </span>
             </div>
           )}

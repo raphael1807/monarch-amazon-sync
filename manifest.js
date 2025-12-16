@@ -11,7 +11,7 @@ const manifest = {
   name: `Monarch / Amazon Sync (CA) v${packageJson.version}`,
   version: packageJson.version,
   description: packageJson.description,
-  permissions: ['storage', 'tabs', 'scripting', 'alarms', 'downloads'],
+  permissions: ['storage', 'tabs', 'scripting', 'alarms', 'downloads', 'notifications', 'contextMenus'],
   host_permissions: [
     'https://amazon.ca/*',
     'https://www.amazon.ca/*',

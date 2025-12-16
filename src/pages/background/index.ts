@@ -5,15 +5,49 @@ import { MonarchTransaction, getTransactions, updateMonarchTransaction } from '@
 import progressStorage, { ProgressPhase, updateProgress } from '@root/src/shared/storages/progressStorage';
 import transactionStorage, { TransactionStatus } from '@root/src/shared/storages/transactionStorage';
 import { matchTransactions } from '@root/src/shared/api/matchUtil';
-import appStorage, { AuthStatus, FailureReason, LastSync } from '@root/src/shared/storages/appStorage';
+import appStorage, { AuthStatus, FailureReason, LastSync, Page } from '@root/src/shared/storages/appStorage';
 import { Action } from '@root/src/shared/types';
 import debugStorage, { debugLog } from '@root/src/shared/storages/debugStorage';
+import { addSyncRecord } from '@root/src/shared/storages/syncHistoryStorage';
 
 reloadOnUpdate('pages/background');
 
 // Log when service worker starts
 console.log('🚀 Monarch/Amazon Sync Extension Service Worker Started');
 debugLog('Service worker started');
+
+// Create context menu for quick actions
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: 'sync-now',
+    title: '🔄 Sync Now',
+    contexts: ['action'],
+  });
+  chrome.contextMenus.create({
+    id: 'view-history',
+    title: '📜 View Sync History',
+    contexts: ['action'],
+  });
+  chrome.contextMenus.create({
+    id: 'open-settings',
+    title: '⚙️ Settings',
+    contexts: ['action'],
+  });
+});
+
+// Handle context menu clicks
+chrome.contextMenus.onClicked.addListener(async info => {
+  if (info.menuItemId === 'sync-now') {
+    const { amazonStatus, monarchStatus } = await appStorage.get();
+    if (amazonStatus === AuthStatus.Success && monarchStatus === AuthStatus.Success) {
+      await handleFullSync(undefined, () => {});
+    }
+  } else if (info.menuItemId === 'view-history') {
+    await appStorage.patch({ page: Page.Default });
+  } else if (info.menuItemId === 'open-settings') {
+    await appStorage.patch({ page: Page.Options });
+  }
+});
 
 async function checkAlarm() {
   const alarm = await chrome.alarms.get('sync-alarm');
@@ -124,12 +158,13 @@ async function handleDryRun(payload: Payload | undefined, sendResponse: (args: u
 }
 
 async function handleFullSync(payload: Payload | undefined, sendResponse: (args: unknown) => void) {
+  const startTime = Date.now();
   if (await inProgress()) {
     sendResponse({ success: false });
     return;
   }
   if (await downloadAndStoreTransactions(payload?.year, false)) {
-    if (await updateMonarchTransactions()) {
+    if (await updateMonarchTransactions(startTime)) {
       sendResponse({ success: true });
       return;
     }
@@ -137,30 +172,64 @@ async function handleFullSync(payload: Payload | undefined, sendResponse: (args:
   sendResponse({ success: false });
 }
 
-async function logSyncComplete(payload: Partial<LastSync>) {
+async function logSyncComplete(payload: Partial<LastSync>, startTime?: number) {
   await debugLog('Sync complete');
   await progressStorage.patch({ phase: ProgressPhase.Complete });
-  await appStorage.patch({
-    lastSync: {
-      time: Date.now(),
-      amazonOrders: payload.amazonOrders ?? 0,
-      monarchTransactions: payload.monarchTransactions ?? 0,
-      transactionsUpdated: payload.transactionsUpdated ?? 0,
-      success: payload.success ?? false,
-      failureReason: payload.failureReason,
-      dryRun: payload.dryRun ?? false,
-    },
+
+  const syncData = {
+    time: Date.now(),
+    amazonOrders: payload.amazonOrders ?? 0,
+    monarchTransactions: payload.monarchTransactions ?? 0,
+    transactionsUpdated: payload.transactionsUpdated ?? 0,
+    success: payload.success ?? false,
+    failureReason: payload.failureReason,
+    dryRun: payload.dryRun ?? false,
+  };
+
+  await appStorage.patch({ lastSync: syncData });
+
+  // Add to sync history
+  await addSyncRecord({
+    success: syncData.success,
+    dryRun: syncData.dryRun,
+    amazonOrders: syncData.amazonOrders,
+    monarchTransactions: syncData.monarchTransactions,
+    matchesFound: syncData.transactionsUpdated,
+    duration: startTime ? Date.now() - startTime : undefined,
+    failureReason: syncData.failureReason,
   });
+
+  // Send browser notification
+  if (syncData.success && syncData.transactionsUpdated > 0) {
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icon-128.png',
+      title: syncData.dryRun ? '🔍 Dry-Run Complete' : '✓ Sync Complete!',
+      message: `Found ${syncData.transactionsUpdated} matches! ${
+        syncData.dryRun ? 'Click extension to download CSV.' : 'Check Monarch for updates.'
+      }`,
+      priority: 2,
+    });
+  } else if (!syncData.success) {
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icon-128.png',
+      title: '❌ Sync Failed',
+      message: syncData.failureReason || 'Unknown error occurred',
+      priority: 2,
+    });
+  }
 }
 
 async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean = false) {
+  const startTime = Date.now();
   await debugStorage.set({ logs: [] });
 
   const appData = await appStorage.get();
   const year = yearString ? parseInt(yearString) : undefined;
 
   if (!appData.monarchKey) {
-    await logSyncComplete({ success: false, failureReason: FailureReason.NoMonarchAuth });
+    await logSyncComplete({ success: false, failureReason: FailureReason.NoMonarchAuth }, startTime);
     return false;
   }
 
@@ -172,13 +241,13 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
     orders = await fetchOrders(year);
   } catch (e) {
     await debugLog(e);
-    await logSyncComplete({ success: false, failureReason: FailureReason.AmazonError });
+    await logSyncComplete({ success: false, failureReason: FailureReason.AmazonError }, startTime);
     return false;
   }
 
   if (!orders || orders.length === 0) {
     await debugLog('No Amazon orders found');
-    await logSyncComplete({ success: false, failureReason: FailureReason.NoAmazonOrders });
+    await logSyncComplete({ success: false, failureReason: FailureReason.NoAmazonOrders }, startTime);
     return false;
   }
   await transactionStorage.patch({
@@ -205,12 +274,12 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
     await debugLog('Fetching Monarch transactions');
     monarchTransactions = await getTransactions(appData.monarchKey, appData.options.amazonMerchant, startDate, endDate);
     if (!monarchTransactions || monarchTransactions.length === 0) {
-      await logSyncComplete({ success: false, failureReason: FailureReason.NoMonarchTransactions });
+      await logSyncComplete({ success: false, failureReason: FailureReason.NoMonarchTransactions }, startTime);
       return false;
     }
   } catch (ex) {
     await debugLog(ex);
-    await logSyncComplete({ success: false, failureReason: FailureReason.MonarchError });
+    await logSyncComplete({ success: false, failureReason: FailureReason.MonarchError }, startTime);
     return false;
   }
 
@@ -221,32 +290,38 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
 
   if (dryRun) {
     const matches = matchTransactions(monarchTransactions, orders, appData.options.overrideTransactions);
-    await logSyncComplete({
-      success: true,
-      dryRun: true,
-      amazonOrders: orders.length,
-      monarchTransactions: monarchTransactions.length,
-      transactionsUpdated: matches.length,
-    });
+    await logSyncComplete(
+      {
+        success: true,
+        dryRun: true,
+        amazonOrders: orders.length,
+        monarchTransactions: monarchTransactions.length,
+        transactionsUpdated: matches.length,
+      },
+      startTime,
+    );
     return true;
   }
 
   return true;
 }
 
-async function updateMonarchTransactions() {
+async function updateMonarchTransactions(startTime?: number) {
   await progressStorage.patch({ phase: ProgressPhase.MonarchUpload, total: 0, complete: 0 });
 
   const transactions = await transactionStorage.get();
   const appData = await appStorage.get();
 
   if (!appData.monarchKey) {
-    await logSyncComplete({
-      success: false,
-      failureReason: FailureReason.NoMonarchAuth,
-      amazonOrders: transactions.orders.length,
-      monarchTransactions: transactions.transactions.length,
-    });
+    await logSyncComplete(
+      {
+        success: false,
+        failureReason: FailureReason.NoMonarchAuth,
+        amazonOrders: transactions.orders.length,
+        monarchTransactions: transactions.transactions.length,
+      },
+      startTime,
+    );
     return false;
   }
 
@@ -281,12 +356,15 @@ async function updateMonarchTransactions() {
     await new Promise(resolve => setTimeout(resolve, 500));
   }
 
-  await logSyncComplete({
-    success: true,
-    amazonOrders: transactions.orders.length,
-    monarchTransactions: transactions.transactions.length,
-    transactionsUpdated: matches.length,
-  });
+  await logSyncComplete(
+    {
+      success: true,
+      amazonOrders: transactions.orders.length,
+      monarchTransactions: transactions.transactions.length,
+      transactionsUpdated: matches.length,
+    },
+    startTime,
+  );
   await progressStorage.patch({ phase: ProgressPhase.Complete });
 
   return true;

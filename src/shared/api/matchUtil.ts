@@ -1,10 +1,13 @@
 import { Item, Order, OrderTransaction } from './amazonApi';
 import { MonarchTransaction } from './monarchApi';
+import { calculateMatchConfidence } from './matchConfidence';
 
 export type MatchedTransaction = {
   monarch: MonarchTransaction;
   amazon: OrderTransaction;
   items: Item[];
+  confidence?: number;
+  reason?: string;
 };
 
 const DAYS_7 = 1000 * 60 * 60 * 24 * 7;
@@ -73,11 +76,23 @@ export function matchTransactions(
 
   return monarchAmazonTransactions
     .map(transaction => {
+      // Calculate confidence for this match
+      const orderForConfidence: Order = {
+        id: transaction.amazon.id,
+        date: transaction.amazon.date,
+        items: transaction.amazon.items,
+        transactions: [transaction.amazon],
+      };
+
+      const { confidence, reason } = calculateMatchConfidence(orderForConfidence, transaction.monarch);
+
       return {
         amazon: transaction.amazon,
         items: transaction.amazon.items,
         monarch: transaction.monarch,
+        confidence,
+        reason,
       };
     })
-    .sort((a, b) => a.monarch.id.localeCompare(b.monarch.id));
+    .sort((a, b) => (b.confidence || 0) - (a.confidence || 0)); // Sort by confidence, highest first
 }

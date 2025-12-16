@@ -56,6 +56,9 @@ type Options = {
   overrideTransactions: boolean;
   amazonMerchant: string;
   syncEnabled: boolean;
+  matchTolerance?: number; // Amount tolerance in dollars (default: 1)
+  dateTolerance?: number; // Date tolerance in days (default: 7)
+  notifications?: boolean; // Show browser notifications (default: true)
 };
 
 type State = {
@@ -68,6 +71,7 @@ type State = {
   lastMonarchAuth: number;
   lastSync: LastSync | undefined;
   options: Options;
+  onboardingComplete?: boolean;
 };
 
 const appStorage = createStorage<State>(
@@ -85,6 +89,9 @@ const appStorage = createStorage<State>(
       overrideTransactions: false,
       amazonMerchant: 'Amazon',
       syncEnabled: false,
+      matchTolerance: 1,
+      dateTolerance: 7,
+      notifications: true,
     },
   },
   {
