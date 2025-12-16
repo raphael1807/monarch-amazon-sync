@@ -85,10 +85,7 @@ export function ManualBackfill() {
         <Tabs.Item title="Multiple Years" icon={FaCalendarAlt}>
           <BulkYearSelector
             availableYears={availableYears}
-            onSelect={years => {
-              setBulkYears(years);
-              runBulkBackfill(years);
-            }}
+            onSelect={years => runBulkBackfill(years)}
             disabled={!ready}
           />
         </Tabs.Item>
