@@ -210,20 +210,30 @@ async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
   const text = await res.text();
   const $ = load(text);
 
-  // Support both English and French text
-  const dateElement =
-    $('td b:contains("Order Placed:")').length > 0
-      ? $('td b:contains("Order Placed:")')
-      : $('td b:contains("Commande effectuée")'); // French
-
-  const date = dateElement
-    .parent()
-    .contents()
-    .filter(function () {
-      return this.type === 'text';
-    })
+  // Amazon.ca uses data-component attributes for the new order details page
+  // Extract date from data-component="orderDate"
+  let date = $('[data-component="orderDate"] span')
+    .first()
     .text()
-    .trim();
+    .trim()
+    .replace(/\s*<i.*<\/i>\s*/g, ''); // Remove separator icons
+
+  // Fallback: Try old format if date not found
+  if (!date) {
+    const dateElement =
+      $('td b:contains("Order Placed:")').length > 0
+        ? $('td b:contains("Order Placed:")')
+        : $('td b:contains("Commande effectuée")'); // French
+
+    date = dateElement
+      .parent()
+      .contents()
+      .filter(function () {
+        return this.type === 'text';
+      })
+      .text()
+      .trim();
+  }
 
   const order = {
     id: orderId,
@@ -234,49 +244,84 @@ async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
   const items: Item[] = [];
   const transactions: OrderTransaction[] = [];
 
-  // Find the items ordered section and parse the items
-  // Orders can span multiple tables by order date
-  // Support both English ("Items Ordered") and French ("Articles commandés")
-  const itemsSection =
-    $('#pos_view_section:contains("Items Ordered")').length > 0
-      ? $('#pos_view_section:contains("Items Ordered")')
-      : $('#pos_view_section:contains("Articles commandés")'); // French
+  // Extract items from data-component="itemTitle" and data-component="unitPrice"
+  $('[data-component="itemTitle"]').each((i, el) => {
+    const itemName = $(el).find('a').text().trim();
 
-  itemsSection
-    .find('table')
-    .find('table')
-    .find('table')
-    .find('table')
-    .each((i, table) => {
-      $(table)
-        .find('tbody tr')
-        .each((j, tr) => {
-          // Ignore first line as it's the header
-          if (j === 0) {
-            return;
-          }
+    // Find the corresponding price element (next unitPrice component)
+    const priceEl = $(el)
+      .closest('.a-fixed-left-grid')
+      .find('[data-component="unitPrice"] .a-price .a-offscreen')
+      .first();
 
-          const quantity = $(tr)
-            .find('td')
-            .eq(0)
-            .contents()
-            .filter(function () {
-              return this.type === 'text';
-            })
-            .text()
-            .replace('of:', '')
-            .trim();
-          const item = $(tr).find('td').eq(0).find('i').text().trim();
-          const price = $(tr).find('td').eq(1).text().trim();
-          if (item && price) {
-            items.push({
-              quantity: parseInt(quantity),
-              title: item,
-              price: moneyToNumber(price),
-            });
-          }
-        });
+    const priceText = priceEl.text().trim();
+
+    if (itemName && priceText) {
+      items.push({
+        quantity: 1, // Amazon.ca doesn't show quantity in this view, defaulting to 1
+        title: itemName,
+        price: moneyToNumber(priceText),
+      });
+    }
+  });
+
+  // Fallback: Try old table-based format if no items found
+  if (items.length === 0) {
+    const itemsSection =
+      $('#pos_view_section:contains("Items Ordered")').length > 0
+        ? $('#pos_view_section:contains("Items Ordered")')
+        : $('#pos_view_section:contains("Articles commandés")');
+
+    itemsSection
+      .find('table')
+      .find('table')
+      .find('table')
+      .find('table')
+      .each((i, table) => {
+        $(table)
+          .find('tbody tr')
+          .each((j, tr) => {
+            if (j === 0) return;
+
+            const quantity = $(tr)
+              .find('td')
+              .eq(0)
+              .contents()
+              .filter(function () {
+                return this.type === 'text';
+              })
+              .text()
+              .replace('of:', '')
+              .trim();
+            const item = $(tr).find('td').eq(0).find('i').text().trim();
+            const price = $(tr).find('td').eq(1).text().trim();
+            if (item && price) {
+              items.push({
+                quantity: parseInt(quantity) || 1,
+                title: item,
+                price: moneyToNumber(price),
+              });
+            }
+          });
+      });
+  }
+
+  // Extract total amount (use "Montant total" or "Total")
+  const totalElement =
+    $('span:contains("Montant total pour ces articles")').length > 0
+      ? $('span:contains("Montant total pour ces articles")')
+      : $('span:contains("Total")');
+
+  const totalText = totalElement.closest('.a-row').find('.a-text-bold').last().text().trim();
+
+  if (totalText) {
+    transactions.push({
+      id: orderId,
+      amount: moneyToNumber(totalText),
+      date: order.date,
+      refund: false,
     });
+  }
 
   // Find any gift card transactions (English and French)
   const giftCardElement =
@@ -294,28 +339,31 @@ async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
     });
   }
 
-  // Find the transaction total - a single order can span multiple transactions
-  // Support English and French
-  const creditCardSection =
-    $("div:contains('Credit Card transactions')").length > 0
-      ? $("div:contains('Credit Card transactions')")
-      : $("div:contains('Transactions par carte de crédit')"); // French
+  // Try old credit card transaction format as fallback
+  if (transactions.length === 0) {
+    const creditCardSection =
+      $("div:contains('Credit Card transactions')").length > 0
+        ? $("div:contains('Credit Card transactions')")
+        : $("div:contains('Transactions par carte de crédit')");
 
-  creditCardSection
-    .parent()
-    .siblings()
-    .last()
-    .find('tr')
-    .each((i, tr) => {
-      const transactionDate = $(tr).find('td:first').text().trim().split(':')[1].replace(':', '').trim();
-      const total = $(tr).find('td:last').text().trim();
-      transactions.push({
-        id: orderId,
-        amount: moneyToNumber(total),
-        date: transactionDate,
-        refund: false,
+    creditCardSection
+      .parent()
+      .siblings()
+      .last()
+      .find('tr')
+      .each((i, tr) => {
+        const transactionDate = $(tr).find('td:first').text().trim().split(':')[1]?.replace(':', '').trim();
+        const total = $(tr).find('td:last').text().trim();
+        if (transactionDate && total) {
+          transactions.push({
+            id: orderId,
+            amount: moneyToNumber(total),
+            date: transactionDate,
+            refund: false,
+          });
+        }
       });
-    });
+  }
 
   return {
     ...order,
