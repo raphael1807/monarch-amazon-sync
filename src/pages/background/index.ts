@@ -213,7 +213,7 @@ async function logSyncComplete(payload: Partial<LastSync>, startTime?: number) {
   if (syncData.success && syncData.transactionsUpdated > 0) {
     chrome.notifications.create({
       type: 'basic',
-      iconUrl: 'icon-128.png',
+      iconUrl: chrome.runtime.getURL('icon-128.png'),
       title: syncData.dryRun ? '🔍 Dry-Run Complete' : '✓ Sync Complete!',
       message: `Found ${syncData.transactionsUpdated} matches! ${
         syncData.dryRun ? 'Click extension to download CSV.' : 'Check Monarch for updates.'
@@ -223,7 +223,7 @@ async function logSyncComplete(payload: Partial<LastSync>, startTime?: number) {
   } else if (!syncData.success) {
     chrome.notifications.create({
       type: 'basic',
-      iconUrl: 'icon-128.png',
+      iconUrl: chrome.runtime.getURL('icon-128.png'),
       title: '❌ Sync Failed',
       message: syncData.failureReason || 'Unknown error occurred',
       priority: 2,
