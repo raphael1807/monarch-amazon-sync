@@ -209,21 +209,27 @@ async function logSyncComplete(payload: Partial<LastSync>, startTime?: number) {
     failureReason: syncData.failureReason,
   });
 
-  // Send browser notification
-  if (syncData.success && syncData.transactionsUpdated > 0) {
+  // Send browser notification (using data URL for icon to avoid download error)
+  const appData = await appStorage.get();
+
+  // Simple 1x1 transparent PNG as data URL (to satisfy iconUrl requirement)
+  const transparentIcon =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  if (appData.options.notifications !== false && syncData.success && syncData.transactionsUpdated > 0) {
     chrome.notifications.create({
       type: 'basic',
-      iconUrl: chrome.runtime.getURL('icon-128.png'),
+      iconUrl: transparentIcon,
       title: syncData.dryRun ? '🔍 Dry-Run Complete' : '✓ Sync Complete!',
       message: `Found ${syncData.transactionsUpdated} matches! ${
         syncData.dryRun ? 'Click extension to download CSV.' : 'Check Monarch for updates.'
       }`,
       priority: 2,
     });
-  } else if (!syncData.success) {
+  } else if (appData.options.notifications !== false && !syncData.success) {
     chrome.notifications.create({
       type: 'basic',
-      iconUrl: chrome.runtime.getURL('icon-128.png'),
+      iconUrl: transparentIcon,
       title: '❌ Sync Failed',
       message: syncData.failureReason || 'Unknown error occurred',
       priority: 2,
