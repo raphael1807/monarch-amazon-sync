@@ -32,18 +32,19 @@ export default function YearSelector({ oldestYear, onSelect }: YearSelectorProps
         <Label htmlFor="years" value="Select year" />
       </div>
       <Select
+        id="years"
+        value={years[0]}
         onChange={e => {
           const value = e.target.value;
           console.log('📅 Year selected:', value);
           onSelect(value);
-        }}
-        defaultValue={years[0]}>
+        }}>
         {years.map(year => (
           <option key={year} value={year}>
             {year}
           </option>
         ))}
-        <option value="recent">Last 3 Months</option>
+        <option value="">Last 3 Months</option>
       </Select>
     </>
   );
