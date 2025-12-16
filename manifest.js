@@ -16,6 +16,7 @@ const manifest = {
     'https://amazon.ca/*',
     'https://www.amazon.ca/*',
     'https://app.monarchmoney.com/*',
+    'https://app.monarch.com/*',
     'https://api.monarchmoney.com/*',
   ],
   background: {

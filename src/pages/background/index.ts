@@ -45,7 +45,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   }
   if (changeInfo.url) {
     const url = new URL(changeInfo.url);
-    if (url.hostname === 'app.monarchmoney.com') {
+    if (url.hostname === 'app.monarchmoney.com' || url.hostname === 'app.monarch.com') {
       const appData = await appStorage.get();
       const lastAuth = new Date(appData.lastMonarchAuth);
       if (
