@@ -413,6 +413,7 @@ async function updateMonarchTransactions(startTime?: number) {
   let skipped = 0;
 
   for (const data of matches) {
+    // Build item list
     const itemString = data.items
       .map(item => {
         return item.quantity + 'x ' + item.title + ' - $' + item.price.toFixed(2);
@@ -427,7 +428,17 @@ async function updateMonarchTransactions(startTime?: number) {
       continue;
     }
 
-    if (data.monarch.notes === itemString) {
+    // Find the order to get invoice URLs
+    const order = transactions.orders.find(o => o.transactions.some(t => t.id === data.amazon.id));
+
+    // Build complete note with items + invoice URLs
+    let fullNote = itemString;
+
+    if (order && order.invoiceUrls && order.invoiceUrls.length > 0) {
+      fullNote += '\n\n📄 Invoices:\n' + order.invoiceUrls.map((url, i) => `${i + 1}. ${url}`).join('\n');
+    }
+
+    if (data.monarch.notes === fullNote) {
       await debugLog('Transaction ' + data.monarch.id + ' already has correct note');
       logger.info(`Transaction ${data.monarch.id} already up to date - skipping`);
       skipped++;
@@ -435,13 +446,14 @@ async function updateMonarchTransactions(startTime?: number) {
     }
 
     try {
-      await updateMonarchTransaction(appData.monarchKey, data.monarch.id, itemString);
-      await debugLog('Updated transaction ' + data.monarch.id + ' with note ' + itemString);
+      await updateMonarchTransaction(appData.monarchKey, data.monarch.id, fullNote);
+      await debugLog('Updated transaction ' + data.monarch.id + ' with note ' + fullNote);
       updated++;
 
       logger.success(`Updated transaction ${updated}/${matches.length}`, {
         monarchId: data.monarch.id,
         items: data.items.length,
+        hasInvoices: order?.invoiceUrls?.length || 0,
         confidence: `${data.confidence}%`,
       });
     } catch (error) {

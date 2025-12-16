@@ -22,6 +22,7 @@ export type Order = {
   date: string;
   items: Item[];
   transactions: OrderTransaction[];
+  invoiceUrls?: string[]; // PDF invoice URLs
 };
 
 export type Item = {
@@ -391,10 +392,40 @@ async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
       });
   }
 
+  // Extract invoice PDF URLs from the page
+  const invoiceUrls: string[] = [];
+
+  // Look for invoice download links (usually in a dropdown or links section)
+  $('a[href*="/documents/download/"], a[href*="invoice.pdf"]').each((i, el) => {
+    const href = $(el).attr('href');
+    if (href && href.includes('invoice.pdf')) {
+      const fullUrl = href.startsWith('http') ? href : `https://www.amazon.ca${href}`;
+      invoiceUrls.push(fullUrl);
+    }
+  });
+
+  // Fallback: try to construct invoice URLs based on common patterns
+  if (invoiceUrls.length === 0) {
+    // Check for data attributes or script tags that might contain invoice URLs
+    const scripts = $('script:contains("invoice")');
+    scripts.each((i, el) => {
+      const scriptContent = $(el).html() || '';
+      const matches = scriptContent.match(/\/documents\/download\/[\w-]+\/invoice\.pdf/g);
+      if (matches) {
+        matches.forEach(match => {
+          invoiceUrls.push(`https://www.amazon.ca${match}`);
+        });
+      }
+    });
+  }
+
+  logger.info(`Found ${invoiceUrls.length} invoice PDF(s) for order ${orderId}`);
+
   return {
     ...order,
     transactions,
     items,
+    invoiceUrls: invoiceUrls.length > 0 ? invoiceUrls : undefined,
   };
 }
 
