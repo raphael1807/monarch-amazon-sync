@@ -2,7 +2,7 @@ import useStorage from '@root/src/shared/hooks/useStorage';
 import appStorage, { mapFailureReasonToMessage } from '@root/src/shared/storages/appStorage';
 import { ProgressPhase, ProgressState } from '@root/src/shared/storages/progressStorage';
 import { Button, Progress, Spinner } from 'flowbite-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { FaTimesCircle } from 'react-icons/fa';
 import { LuCircleSlash } from 'react-icons/lu';
 import { RiCheckboxCircleFill } from 'react-icons/ri';
@@ -12,8 +12,6 @@ import { matchTransactions } from '@root/src/shared/api/matchUtil';
 
 export function ProgressIndicator({ progress }: { progress: ProgressState }) {
   const { lastSync } = useStorage(appStorage);
-  const [csvDownloaded, setCsvDownloaded] = useState(false);
-  const [lastProcessedSync, setLastProcessedSync] = useState<number | null>(null);
 
   const lastSyncTime = lastSync ? new Date(lastSync.time).toLocaleString() : 'Never';
 
@@ -56,29 +54,7 @@ export function ProgressIndicator({ progress }: { progress: ProgressState }) {
       url: url,
       filename: `monarch-amazon-sync-${year}.csv`,
     });
-
-    setCsvDownloaded(true);
   }, [lastSync]);
-
-  // Auto-download CSV when dry-run completes (only when transitioning from in-progress to complete)
-  useEffect(() => {
-    const shouldAutoDownload =
-      lastSync?.success &&
-      lastSync?.dryRun &&
-      lastSync?.time &&
-      lastSync.time !== lastProcessedSync &&
-      progress.phase === ProgressPhase.Complete && // Only when actually complete
-      lastSync.transactionsUpdated > 0; // And there are matches
-
-    if (shouldAutoDownload) {
-      setLastProcessedSync(lastSync.time);
-      setCsvDownloaded(false);
-      // Auto-download after UI settles
-      setTimeout(() => {
-        dryRunDownload();
-      }, 800);
-    }
-  }, [lastSync, dryRunDownload, lastProcessedSync, progress.phase]);
 
   const inProgress = progress.phase !== ProgressPhase.Complete && progress.phase !== ProgressPhase.Idle;
   return (
@@ -86,37 +62,33 @@ export function ProgressIndicator({ progress }: { progress: ProgressState }) {
       {inProgress ? (
         <ProgressSpinner progress={progress} />
       ) : lastSync?.success && lastSync?.transactionsUpdated > 0 ? (
-        <div className="flex flex-col items-center gap-2">
-          <RiCheckboxCircleFill className="text-green-500" size={48} />
-          <span className="text-base font-semibold text-green-700">✓ Sync Complete</span>
-          <div className="text-sm text-gray-600 text-center">
-            <div>📦 {lastSync.amazonOrders} Amazon orders found</div>
+        <div className="flex flex-col items-center gap-3 p-4">
+          <RiCheckboxCircleFill className="text-green-500" size={56} />
+          <span className="text-xl font-bold text-green-700">✓ Complete!</span>
+
+          <div className="text-sm text-gray-700 text-center space-y-1 bg-gray-50 p-3 rounded-lg w-full">
+            <div className="font-medium">📊 Results:</div>
+            <div>📦 {lastSync.amazonOrders} Amazon orders</div>
             <div>💳 {lastSync.monarchTransactions} Monarch transactions</div>
-            <div>✨ {lastSync.transactionsUpdated} matches found</div>
+            <div className="font-semibold text-green-600">✨ {lastSync.transactionsUpdated} matches</div>
           </div>
+
           {lastSync.dryRun ? (
-            <div className="flex flex-col items-center gap-2 mt-2 p-3 bg-blue-50 rounded-lg w-full">
-              <span className="text-sm font-medium text-blue-800">🔍 Dry-Run Mode</span>
-              <span className="text-xs text-blue-600 text-center">No Monarch data was modified</span>
-              {csvDownloaded ? (
-                <div className="flex flex-col items-center gap-1">
-                  <span className="text-sm text-green-600 font-medium">✓ CSV Downloaded!</span>
-                  <span className="text-xs text-gray-500">Check your Downloads folder</span>
-                  <Button size="xs" outline color="blue" onClick={dryRunDownload}>
-                    Download Again
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-1">
-                  <Spinner size="sm" />
-                  <span className="text-xs text-blue-600">Preparing CSV download...</span>
-                </div>
-              )}
+            <div className="flex flex-col items-center gap-3 mt-2 p-4 bg-blue-100 border-2 border-blue-300 rounded-lg w-full">
+              <span className="text-lg font-bold text-blue-800">🔍 DRY-RUN MODE</span>
+              <span className="text-sm text-blue-700 text-center font-medium">⚠️ No Monarch data was modified</span>
+              <Button size="lg" color="success" className="w-full font-bold text-lg" onClick={dryRunDownload}>
+                📥 DOWNLOAD CSV REPORT
+              </Button>
+              <span className="text-xs text-gray-600 text-center">Review the changes before running live sync</span>
             </div>
           ) : (
-            <div className="mt-2 p-2 bg-green-50 rounded-lg">
-              <span className="text-sm font-medium text-green-700">
-                ✓ Updated {lastSync.transactionsUpdated} Monarch transactions
+            <div className="mt-2 p-3 bg-green-100 border-2 border-green-300 rounded-lg w-full">
+              <span className="text-base font-bold text-green-800 text-center block">
+                ✓ Updated {lastSync.transactionsUpdated} Monarch transactions!
+              </span>
+              <span className="text-xs text-green-700 text-center block mt-1">
+                Check Monarch to see your updated transaction notes
               </span>
             </div>
           )}
