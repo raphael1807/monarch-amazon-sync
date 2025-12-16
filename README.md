@@ -134,6 +134,114 @@ This Canadian version includes:
   - Fixed selector changes for Amazon pages
 - ✅ **Maintained Compatibility**: Works seamlessly with Monarch Money
 
+## Testing the Extension
+
+Before using the extension with real data, it's **strongly recommended** to test it to ensure everything works properly with Amazon.ca.
+
+> 📖 **See [TESTING.md](TESTING.md) for the complete testing guide with detailed instructions.**
+
+### Quick Test (5 minutes)
+
+### Pre-Installation Testing
+
+1. **Verify the build**:
+   ```bash
+   # Make sure the extension builds without errors
+   pnpm install
+   pnpm build
+   
+   # Check that dist folder was created
+   ls -la dist/
+   ```
+
+2. **Check the manifest**:
+   ```bash
+   # Verify manifest.json has correct permissions
+   cat dist/manifest.json
+   ```
+
+### Post-Installation Testing
+
+1. **Load the Extension**:
+   - Follow installation instructions above
+   - Check Chrome DevTools console for any errors
+   - Extension icon should appear in toolbar
+
+2. **Test Amazon.ca Connection**:
+   - Make sure you're logged in to [Amazon.ca](https://amazon.ca)
+   - Click the extension icon
+   - Check "Connection Info" section
+   - Should show: ✅ **Amazon: Connected**
+   - If not connected, refresh the Amazon page and try again
+
+3. **Test Monarch Connection**:
+   - Open [Monarch Money](https://app.monarchmoney.com) in a new tab
+   - Wait 5-10 seconds for the extension to detect it
+   - Click the extension icon
+   - Should show: ✅ **Monarch: Connected**
+   - If not connected, refresh Monarch and wait a bit
+
+4. **Safe Dry-Run Test** (Recommended):
+   - Click **"Manual backfill"** in the extension
+   - Select a recent year (e.g., current year or last year)
+   - **Enable "Dry-run mode"** ⚠️ (This won't modify your Monarch data!)
+   - Click **"Start Backfill"**
+   - Watch the progress indicator
+   - A CSV file will download with proposed changes
+   - **Review the CSV** to verify:
+     - Amazon orders are detected
+     - Dates and amounts look correct
+     - Item names are captured properly
+
+5. **Check Debug Logs** (If issues occur):
+   - Open Chrome DevTools (F12)
+   - Go to Console tab
+   - Click the extension icon to trigger actions
+   - Look for any error messages (red text)
+   - Check Network tab for failed requests
+
+### What to Look For
+
+✅ **Good Signs**:
+- Extension icon appears in toolbar
+- Both Amazon.ca and Monarch show "Connected"
+- Dry-run CSV contains your Amazon orders
+- No errors in Chrome DevTools console
+
+⚠️ **Warning Signs**:
+- "Not logged in" status for Amazon or Monarch
+- Empty CSV file from dry-run
+- Console errors mentioning "amazon.com" instead of "amazon.ca"
+- 404 or network errors in DevTools
+
+### Testing Checklist
+
+Before using the extension for real:
+- [ ] Extension loads without errors
+- [ ] Amazon.ca connection works (not .com)
+- [ ] Monarch Money connection works
+- [ ] Dry-run produces a valid CSV
+- [ ] CSV contains expected Amazon orders
+- [ ] Dates and amounts match your expectations
+- [ ] No errors in Chrome DevTools console
+
+### If Tests Fail
+
+**Amazon not connecting?**
+- Verify you're on amazon.**ca** (not .com)
+- Clear browser cache and cookies
+- Try incognito mode to rule out extension conflicts
+
+**Monarch not connecting?**
+- Try refreshing the Monarch page
+- Click "Reset Connection" in extension options
+- Check if Monarch is accessible (not down)
+
+**Dry-run produces empty CSV?**
+- Check if you have Amazon orders in the selected year
+- Verify Amazon page structure hasn't changed
+- Check Console for specific error messages
+
 ## Keeping Up-to-Date
 
 This fork stays synchronized with the [original repository](https://github.com/alex-peck/monarch-amazon-sync). To update with the latest upstream changes:
