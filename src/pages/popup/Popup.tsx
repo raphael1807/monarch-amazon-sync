@@ -17,16 +17,16 @@ const Popup = () => {
   }
 
   return (
-    <div className="flex flex-col w-[480px] bg-white">
+    <div className="flex flex-col min-w-[500px] w-[500px] bg-white">
       {/* Simple Header */}
-      <div className="px-5 py-4 bg-white border-b border-gray-200">
-        <div className="flex items-center gap-3 mb-4">
+      <div className="px-6 py-4 bg-white border-b border-gray-200">
+        <div className="flex items-center gap-3 mb-3">
           <img src="/icon-128.png" className="h-8 w-8" alt="logo" />
           <span className="font-bold text-gray-900 text-lg">Monarch × Amazon</span>
         </div>
 
         {/* Clean Tabs */}
-        <div className="flex gap-2 bg-gray-100 p-1 rounded-xl">
+        <div className="flex gap-2 bg-gray-100 p-1.5 rounded-xl">
           <TabButton active={storage.page === Page.Default} onClick={() => appStorage.patch({ page: Page.Default })}>
             🏠 Home
           </TabButton>
@@ -41,7 +41,7 @@ const Popup = () => {
         </div>
       </div>
 
-      <div className="overflow-y-auto max-h-[560px]">{page}</div>
+      <div className="overflow-y-auto max-h-[600px]">{page}</div>
     </div>
   );
 };
