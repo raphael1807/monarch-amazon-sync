@@ -331,10 +331,26 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
     logger.step('Matching transactions (Dry-Run)');
     const matches = matchTransactions(monarchTransactions, orders, appData.options.overrideTransactions);
 
+    // Find unmatched transactions
+    const matchedAmazonIds = new Set(matches.map(m => m.amazon.id));
+    const matchedMonarchIds = new Set(matches.map(m => m.monarch.id));
+
+    const unmatchedOrders = orders.filter(order => {
+      return !order.transactions.some(t => matchedAmazonIds.has(t.id));
+    });
+
+    const unmatchedTransactions = monarchTransactions.filter(txn => {
+      // Don't show as unmatched if it already has notes (user may have manually added them)
+      if (!appData.options.overrideTransactions && txn.notes) return false;
+      return !matchedMonarchIds.has(txn.id);
+    });
+
     logger.success('Matching complete', {
       amazonOrders: orders.length,
       monarchTransactions: monarchTransactions.length,
       matches: matches.length,
+      unmatchedAmazon: unmatchedOrders.length,
+      unmatchedMonarch: unmatchedTransactions.length,
       matchRate: `${((matches.length / orders.length) * 100).toFixed(1)}%`,
     });
 
@@ -351,11 +367,40 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
       });
     }
 
+    // Show unmatched
+    if (unmatchedOrders.length > 0) {
+      logger.warning(`${unmatchedOrders.length} unmatched Amazon orders`, {
+        sample: unmatchedOrders.slice(0, 3).map(o => ({
+          date: o.date,
+          amount: o.transactions[0]?.amount,
+          id: o.id,
+        })),
+      });
+    }
+
+    if (unmatchedTransactions.length > 0) {
+      logger.warning(`${unmatchedTransactions.length} unmatched Monarch transactions`, {
+        sample: unmatchedTransactions.slice(0, 3).map(t => ({
+          date: t.date,
+          amount: t.amount,
+          id: t.id,
+        })),
+      });
+    }
+
+    // Store unmatched for display
+    await transactionStorage.patch({
+      unmatchedOrders,
+      unmatchedTransactions,
+    });
+
     logger.summary({
       Mode: 'DRY-RUN',
       'Amazon Orders': orders.length,
       'Monarch Transactions': monarchTransactions.length,
       'Matches Found': matches.length,
+      'Unmatched Amazon': unmatchedOrders.length,
+      'Unmatched Monarch': unmatchedTransactions.length,
       'Match Rate': `${((matches.length / orders.length) * 100).toFixed(1)}%`,
       Duration: `${((Date.now() - startTime) / 1000).toFixed(2)}s`,
     });

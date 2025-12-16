@@ -12,6 +12,8 @@ type State = {
   result: TransactionStatus;
   orders: Order[];
   transactions: MonarchTransaction[];
+  unmatchedOrders?: Order[];
+  unmatchedTransactions?: MonarchTransaction[];
 };
 
 const transactionStorage = createStorage<State>(

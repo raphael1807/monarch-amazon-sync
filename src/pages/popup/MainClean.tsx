@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, ToggleSwitch } from 'flowbite-react';
 import progressStorage, { ProgressPhase } from '@root/src/shared/storages/progressStorage';
 import useStorage from '@root/src/shared/hooks/useStorage';
-import { checkAmazonAuth } from '@root/src/shared/api/amazonApi';
+import { checkAmazonAuth, Order } from '@root/src/shared/api/amazonApi';
 import appStorage, { AuthStatus } from '@root/src/shared/storages/appStorage';
 import withErrorBoundary from '@root/src/shared/hoc/withErrorBoundary';
 import withSuspense from '@root/src/shared/hoc/withSuspense';
@@ -10,12 +10,15 @@ import { useAlarm } from '@root/src/shared/hooks/useAlarm';
 import { Action } from '@root/src/shared/types';
 import transactionStorage from '@root/src/shared/storages/transactionStorage';
 import { matchTransactions, MatchedTransaction } from '@root/src/shared/api/matchUtil';
+import { MonarchTransaction } from '@root/src/shared/api/monarchApi';
+import UnmatchedTransactions from './components/UnmatchedTransactions';
 import { FaCheckCircle, FaExclamationTriangle, FaSync, FaChevronDown, FaChevronUp, FaDownload } from 'react-icons/fa';
 import { stringify } from 'csv-stringify/browser/esm/sync';
 
 const MainClean = () => {
   const progress = useStorage(progressStorage);
   const appData = useStorage(appStorage);
+  const transactionData = useStorage(transactionStorage);
   const syncAlarm = useAlarm('sync-alarm');
   const [matches, setMatches] = useState<MatchedTransaction[]>([]);
   const [expanded, setExpanded] = useState(false);
@@ -133,7 +136,14 @@ const MainClean = () => {
         {actionOngoing ? (
           <ProgressMinimal progress={progress} />
         ) : appData.lastSync?.success ? (
-          <ResultsCard lastSync={appData.lastSync} matches={matches} expanded={expanded} setExpanded={setExpanded} />
+          <ResultsCard
+            lastSync={appData.lastSync}
+            matches={matches}
+            expanded={expanded}
+            setExpanded={setExpanded}
+            unmatchedOrders={transactionData.unmatchedOrders || []}
+            unmatchedTransactions={transactionData.unmatchedTransactions || []}
+          />
         ) : null}
       </div>
 
@@ -223,11 +233,15 @@ function ResultsCard({
   matches,
   expanded,
   setExpanded,
+  unmatchedOrders,
+  unmatchedTransactions,
 }: {
   lastSync: { transactionsUpdated: number; dryRun?: boolean; amazonOrders: number; monarchTransactions: number };
   matches: MatchedTransaction[];
   expanded: boolean;
   setExpanded: (v: boolean) => void;
+  unmatchedOrders: Order[];
+  unmatchedTransactions: MonarchTransaction[];
 }) {
   if (!lastSync.transactionsUpdated || lastSync.transactionsUpdated === 0) {
     return (
@@ -264,7 +278,7 @@ function ResultsCard({
 
       {/* Matches Preview */}
       {matches.length > 0 && (
-        <div className="px-6 py-4">
+        <div className="px-6 py-4 border-b border-gray-100">
           <button
             onClick={() => setExpanded(!expanded)}
             className="w-full flex items-center justify-between text-sm font-medium text-gray-700 hover:text-purple-600 transition-colors">
@@ -299,6 +313,11 @@ function ResultsCard({
           )}
         </div>
       )}
+
+      {/* Unmatched Transactions */}
+      <div className="px-6 py-4 border-t border-gray-100">
+        <UnmatchedTransactions unmatchedAmazon={unmatchedOrders} unmatchedMonarch={unmatchedTransactions} />
+      </div>
 
       {/* Actions */}
       {lastSync.dryRun && (
