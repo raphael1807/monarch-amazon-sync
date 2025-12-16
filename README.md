@@ -69,6 +69,35 @@ Then follow steps 2-4 from Option 1 above.
 4. **Click the extension icon** and turn on "Sync"
 5. **Done!** The extension will now automatically sync your Amazon purchases daily
 
+## Debugging & Logs
+
+The extension includes comprehensive logging to help troubleshoot issues.
+
+### Accessing Debug Logs
+
+**Method 1: Real-time Console Logs**
+1. Press `F12` to open Chrome DevTools
+2. Go to Console tab
+3. All operations are logged in real-time
+4. Look for messages starting with "Checking Amazon auth", "Fetching orders", etc.
+
+**Method 2: Download Debug Logs**
+1. Click the extension icon
+2. Click "Options"
+3. Click "Download debug logs"
+4. Review the downloaded text file with complete operation history
+
+**What logs show:**
+- ✅ Connection status (Amazon & Monarch)
+- ✅ Order fetching progress
+- ✅ Transaction matching results
+- ✅ Error messages with details
+- ✅ API response codes
+
+**For detailed debugging help:**
+- 📖 [DEBUGGING.md](DEBUGGING.md) - Complete guide with log examples
+- 📋 [ERROR_CODES.md](ERROR_CODES.md) - All error messages explained
+
 ## How to Use
 
 ### Initial Setup
@@ -98,20 +127,31 @@ Want to sync your historical Amazon orders?
 
 ### Troubleshooting
 
+> 🔍 **For detailed debugging help, see [DEBUGGING.md](DEBUGGING.md) and [ERROR_CODES.md](ERROR_CODES.md)**
+
 **Extension not connecting to Amazon?**
 - Make sure you're logged in to Amazon.ca (not Amazon.com)
 - Try refreshing the Amazon page
 - Check if "Developer mode" is enabled in Chrome extensions
+- Open Console (F12) and look for error messages
 
 **Extension not connecting to Monarch?**
 - Open Monarch Money in your browser
 - Wait a few seconds for the extension to detect the connection
 - Try clicking "Reset Connection" in the extension options
+- Check Console for "Monarch auth success" message
 
 **Transactions not matching?**
 - The extension matches based on date and amount
 - Check that your Amazon orders have corresponding transactions in Monarch
 - Some credit card transactions may take a few days to appear in Monarch
+- Download debug logs from Options to see what was matched
+
+**Need more help?**
+- 📖 [DEBUGGING.md](DEBUGGING.md) - Complete debugging guide with log examples
+- 📋 [ERROR_CODES.md](ERROR_CODES.md) - Quick reference for all error messages
+- 🧪 [TESTING.md](TESTING.md) - Testing procedures
+- 💬 [GitHub Issues](https://github.com/raphael1807/monarch-amazon-sync/issues) - Report bugs
 
 ## Known limitations
 - The extension does not create new transactions. It only updates the notes of existing transactions.
