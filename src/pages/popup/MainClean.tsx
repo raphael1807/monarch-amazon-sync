@@ -91,25 +91,25 @@ const MainClean = () => {
   const monarchConnected = appData.monarchStatus === AuthStatus.Success;
 
   return (
-    <div className="min-w-[450px] bg-gradient-to-br from-gray-50 to-white">
+    <div className="bg-gradient-to-br from-gray-50 to-white">
       {/* Clean Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-200 px-5 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
-            <p className="text-sm text-gray-500">Amazon.ca ↔ Monarch Money</p>
+            <h1 className="text-lg font-bold text-gray-900">Dashboard</h1>
+            <p className="text-xs text-gray-500">Amazon.ca ↔ Monarch Money</p>
           </div>
           {ready && (
             <Button size="sm" color="purple" onClick={forceSync} disabled={!ready}>
-              <FaSync className="mr-2" />
-              Sync
+              <FaSync className="mr-1 text-xs" />
+              <span className="text-xs">Sync</span>
             </Button>
           )}
         </div>
       </div>
 
       {/* Connection Status - Minimal */}
-      <div className="px-6 py-4 space-y-3">
+      <div className="px-5 py-4 space-y-2">
         <ConnectionPill
           label="Amazon.ca"
           connected={amazonConnected}
@@ -123,7 +123,7 @@ const MainClean = () => {
       </div>
 
       {/* Progress or Results */}
-      <div className="px-6 py-4">
+      <div className="px-5 py-3">
         {actionOngoing ? (
           <ProgressMinimal progress={progress} />
         ) : appData.lastSync?.success ? (
@@ -133,10 +133,10 @@ const MainClean = () => {
 
       {/* Auto-sync Toggle - Bottom */}
       {ready && (
-        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+        <div className="px-5 py-3 border-t border-gray-200 bg-gray-50">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm font-medium text-gray-900">Auto-Sync</div>
+              <div className="text-sm font-semibold text-gray-900">Auto-Sync</div>
               <div className="text-xs text-gray-500">
                 {appData.options.syncEnabled && syncAlarm
                   ? `Next: ${new Date(syncAlarm.scheduledTime).toLocaleTimeString()}`
@@ -159,20 +159,20 @@ const MainClean = () => {
 function ConnectionPill({ label, connected, onFix }: { label: string; connected: boolean; onFix: () => void }) {
   return (
     <div
-      className={`flex items-center justify-between px-4 py-3 rounded-xl ${
-        connected ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+      className={`flex items-center justify-between px-4 py-2.5 rounded-lg border ${
+        connected ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'
       }`}>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
         {connected ? (
-          <FaCheckCircle className="text-green-600 text-xl" />
+          <FaCheckCircle className="text-green-600" size={18} />
         ) : (
-          <FaExclamationTriangle className="text-red-600 text-xl" />
+          <FaExclamationTriangle className="text-red-600" size={18} />
         )}
-        <span className={`font-medium ${connected ? 'text-green-900' : 'text-red-900'}`}>{label}</span>
+        <span className={`font-semibold text-sm ${connected ? 'text-green-900' : 'text-red-900'}`}>{label}</span>
       </div>
       {!connected && (
-        <Button size="xs" color="failure" onClick={onFix}>
-          Connect
+        <Button size="xs" color="failure" onClick={onFix} className="text-xs">
+          Fix
         </Button>
       )}
     </div>

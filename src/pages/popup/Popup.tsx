@@ -17,31 +17,31 @@ const Popup = () => {
   }
 
   return (
-    <div className="flex flex-col w-[420px] bg-white">
+    <div className="flex flex-col w-[480px] bg-white">
       {/* Simple Header */}
-      <div className="px-4 py-3 bg-white border-b border-gray-200">
-        <div className="flex items-center gap-2 mb-3">
-          <img src="/icon-128.png" className="h-6 w-6" alt="logo" />
-          <span className="font-semibold text-gray-900 text-base">Monarch × Amazon</span>
+      <div className="px-5 py-4 bg-white border-b border-gray-200">
+        <div className="flex items-center gap-3 mb-4">
+          <img src="/icon-128.png" className="h-8 w-8" alt="logo" />
+          <span className="font-bold text-gray-900 text-lg">Monarch × Amazon</span>
         </div>
 
         {/* Clean Tabs */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+        <div className="flex gap-2 bg-gray-100 p-1 rounded-xl">
           <TabButton active={storage.page === Page.Default} onClick={() => appStorage.patch({ page: Page.Default })}>
-            Home
+            🏠 Home
           </TabButton>
           <TabButton
             active={storage.page === Page.ManualBackfill}
             onClick={() => appStorage.patch({ page: Page.ManualBackfill })}>
-            Sync
+            🔄 Sync
           </TabButton>
           <TabButton active={storage.page === Page.Options} onClick={() => appStorage.patch({ page: Page.Options })}>
-            Settings
+            ⚙️ Settings
           </TabButton>
         </div>
       </div>
 
-      <div className="overflow-hidden">{page}</div>
+      <div className="overflow-y-auto max-h-[560px]">{page}</div>
     </div>
   );
 };
@@ -50,8 +50,8 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   return (
     <button
       onClick={onClick}
-      className={`flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-        active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+      className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+        active ? 'bg-white text-gray-900 shadow-md' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
       }`}>
       {children}
     </button>
