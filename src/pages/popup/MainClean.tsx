@@ -64,6 +64,7 @@ const MainClean = () => {
   useEffect(() => {
     const loadMatches = async () => {
       if (appData.lastSync?.success && appData.lastSync?.transactionsUpdated > 0) {
+        console.log('Loading matches for display...');
         const transactions = await transactionStorage.get();
 
         if (transactions && transactions.transactions && transactions.orders) {
@@ -72,8 +73,13 @@ const MainClean = () => {
             transactions.orders,
             appData.options.overrideTransactions,
           );
+          console.log('Matches loaded:', calculatedMatches.length);
           setMatches(calculatedMatches);
+          setExpanded(true); // Auto-expand to show results
         }
+      } else {
+        setMatches([]);
+        setExpanded(false);
       }
     };
     loadMatches();

@@ -434,15 +434,20 @@ async function updateMonarchTransactions(startTime?: number) {
       continue;
     }
 
-    updateMonarchTransaction(appData.monarchKey, data.monarch.id, itemString);
-    await debugLog('Updated transaction ' + data.monarch.id + ' with note ' + itemString);
-    updated++;
+    try {
+      await updateMonarchTransaction(appData.monarchKey, data.monarch.id, itemString);
+      await debugLog('Updated transaction ' + data.monarch.id + ' with note ' + itemString);
+      updated++;
 
-    logger.success(`Updated transaction ${updated}/${matches.length}`, {
-      monarchId: data.monarch.id,
-      items: data.items.length,
-      confidence: `${data.confidence}%`,
-    });
+      logger.success(`Updated transaction ${updated}/${matches.length}`, {
+        monarchId: data.monarch.id,
+        items: data.items.length,
+        confidence: `${data.confidence}%`,
+      });
+    } catch (error) {
+      logger.error(`Failed to update transaction ${data.monarch.id}`, error);
+      skipped++;
+    }
 
     await progressStorage.patch({
       total: matches.length,

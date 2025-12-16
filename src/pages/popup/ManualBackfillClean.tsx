@@ -23,10 +23,15 @@ export function ManualBackfillClean() {
     appData.amazonStatus === AuthStatus.Success && appData.monarchStatus === AuthStatus.Success && !actionOngoing;
 
   const runBackfill = useCallback(async () => {
-    if (!ready) return;
+    if (!ready || !year) return;
 
+    console.log('Starting backfill:', { year, dryRun });
     await appStorage.patch({ page: Page.Default });
-    await chrome.runtime.sendMessage({ action: dryRun ? Action.DryRun : Action.FullSync, payload: { year: year } });
+    await chrome.runtime.sendMessage({
+      action: dryRun ? Action.DryRun : Action.FullSync,
+      payload: { year: year },
+    });
+    console.log('Backfill message sent');
   }, [ready, dryRun, year]);
 
   const amazonConnected = appData.amazonStatus === AuthStatus.Success;
