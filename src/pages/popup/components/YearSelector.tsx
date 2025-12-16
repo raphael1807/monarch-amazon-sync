@@ -1,5 +1,5 @@
 import { Label, Select } from 'flowbite-react';
-import { useMemo, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 
 type YearSelectorProps = {
   oldestYear: number | undefined;
@@ -18,27 +18,21 @@ export default function YearSelector({ oldestYear, onSelect }: YearSelectorProps
     return years;
   }, [oldestYear]);
 
-  // Auto-select current year on mount
-  useEffect(() => {
-    if (years.length > 0) {
-      console.log('📅 Auto-selecting year:', years[0]);
-      onSelect(years[0]);
-    }
-  }, [years, onSelect]);
+  const [selectedValue, setSelectedValue] = useState<string>(years[0] || '');
+
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    console.log('📅 Year selected:', value || 'Last 3 Months');
+    setSelectedValue(value);
+    onSelect(value);
+  };
 
   return (
     <>
       <div className="mb-2 block">
         <Label htmlFor="years" value="Select year" />
       </div>
-      <Select
-        id="years"
-        value={years[0]}
-        onChange={e => {
-          const value = e.target.value;
-          console.log('📅 Year selected:', value);
-          onSelect(value);
-        }}>
+      <Select id="years" value={selectedValue} onChange={handleChange}>
         {years.map(year => (
           <option key={year} value={year}>
             {year}

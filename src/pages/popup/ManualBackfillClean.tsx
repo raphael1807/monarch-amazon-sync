@@ -11,7 +11,9 @@ export function ManualBackfillClean() {
   const appData = useStorage(appStorage);
   const progress = useStorage(progressStorage);
 
-  const [year, setYear] = useState<string | undefined>(undefined);
+  // Initialize with current year
+  const currentYear = new Date().getFullYear().toString();
+  const [year, setYear] = useState<string>(currentYear);
   const [dryRun, setDryRun] = useState<boolean>(true);
 
   const handleToggle = useCallback(
@@ -21,6 +23,11 @@ export function ManualBackfillClean() {
     },
     [dryRun],
   );
+
+  const handleYearChange = (selectedYear: string) => {
+    console.log('📅 Year state updated:', selectedYear || 'Last 3 Months');
+    setYear(selectedYear || '');
+  };
 
   const actionOngoing = useMemo(
     () => progress.phase !== ProgressPhase.Complete && progress.phase !== ProgressPhase.Idle,
@@ -66,7 +73,7 @@ export function ManualBackfillClean() {
       {/* Year Selector */}
       <div className="space-y-2">
         <div className="text-sm font-medium text-gray-700">Select Year</div>
-        <YearSelector oldestYear={appData.oldestAmazonYear} onSelect={year => setYear(year)} />
+        <YearSelector oldestYear={appData.oldestAmazonYear} onSelect={handleYearChange} />
       </div>
 
       {/* Dry Run Toggle - More Prominent */}
