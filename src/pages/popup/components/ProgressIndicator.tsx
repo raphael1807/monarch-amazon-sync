@@ -60,17 +60,25 @@ export function ProgressIndicator({ progress }: { progress: ProgressState }) {
     setCsvDownloaded(true);
   }, [lastSync]);
 
-  // Auto-download CSV when dry-run completes
+  // Auto-download CSV when dry-run completes (only when transitioning from in-progress to complete)
   useEffect(() => {
-    if (lastSync?.success && lastSync?.dryRun && lastSync?.time && lastSync.time !== lastProcessedSync) {
+    const shouldAutoDownload =
+      lastSync?.success &&
+      lastSync?.dryRun &&
+      lastSync?.time &&
+      lastSync.time !== lastProcessedSync &&
+      progress.phase === ProgressPhase.Complete && // Only when actually complete
+      lastSync.transactionsUpdated > 0; // And there are matches
+
+    if (shouldAutoDownload) {
       setLastProcessedSync(lastSync.time);
       setCsvDownloaded(false);
-      // Auto-download after a short delay to let UI update
+      // Auto-download after UI settles
       setTimeout(() => {
         dryRunDownload();
-      }, 500);
+      }, 800);
     }
-  }, [lastSync, dryRunDownload, lastProcessedSync]);
+  }, [lastSync, dryRunDownload, lastProcessedSync, progress.phase]);
 
   const inProgress = progress.phase !== ProgressPhase.Complete && progress.phase !== ProgressPhase.Idle;
   return (
