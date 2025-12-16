@@ -4,6 +4,7 @@ import type { CheerioAPI } from 'cheerio';
 import * as Throttle from 'promise-parallel-throttle';
 import { debugLog } from '../storages/debugStorage';
 import { AuthStatus } from '../storages/appStorage';
+import { logger } from '../utils/logger';
 
 const ORDER_PAGES_URL = 'https://www.amazon.ca/gp/css/order-history?disableCsd=no-js';
 const ORDER_RETURNS_URL = 'https://www.amazon.ca/spr/returns/cart';
@@ -38,9 +39,12 @@ export type OrderTransaction = {
 
 export async function checkAmazonAuth(): Promise<AmazonInfo> {
   try {
+    logger.step('Checking Amazon.ca authentication');
     debugLog('Checking Amazon auth');
     const res = await fetch(ORDER_PAGES_URL);
     await debugLog('Got Amazon auth response' + res.status);
+    logger.info('Amazon response received', { status: res.status, url: ORDER_PAGES_URL });
+
     const text = await res.text();
     const $ = load(text);
 
@@ -48,6 +52,7 @@ export async function checkAmazonAuth(): Promise<AmazonInfo> {
 
     if (signIn.length > 0) {
       await debugLog('Amazon auth failed');
+      logger.warning('Amazon sign-in page detected - not logged in');
       return {
         status: AuthStatus.NotLoggedIn,
       };
@@ -65,12 +70,14 @@ export async function checkAmazonAuth(): Promise<AmazonInfo> {
     const lowestYear = Math.min(...yearOptions.map(x => parseInt(x)));
 
     await debugLog('Amazon auth success');
+    logger.success('Amazon authenticated', { oldestYear: lowestYear, yearsAvailable: yearOptions.length });
     return {
       status: AuthStatus.Success,
       startingYear: lowestYear,
     };
   } catch (e) {
     await debugLog('Amazon auth failed with error: ' + e);
+    logger.error('Amazon authentication failed', e);
     return {
       status: AuthStatus.Failure,
     };
@@ -82,9 +89,13 @@ export async function fetchOrders(year: number | undefined): Promise<Order[]> {
   if (year) {
     url += `&timeFilter=year-${year}`;
   }
+
+  logger.step('Fetching orders from Amazon.ca', { year: year || 'Current', url });
   await debugLog('Fetching orders from ' + url);
   const res = await fetch(url);
   await debugLog('Got orders response ' + res.status);
+  logger.info('Amazon page loaded', { status: res.status });
+
   const text = await res.text();
   const $ = load(text);
 
@@ -99,18 +110,23 @@ export async function fetchOrders(year: number | undefined): Promise<Order[]> {
     }
   });
 
+  logger.info('Pagination detected', { totalPages: endPage });
   await updateProgress(ProgressPhase.AmazonPageScan, endPage, 0);
 
   let orderCards = orderCardsFromPage($);
   await debugLog('Found ' + orderCards.length + ' orders');
+  logger.success(`Page 1: Found ${orderCards.length} orders`);
 
   await updateProgress(ProgressPhase.AmazonPageScan, endPage, 1);
 
   for (let i = 2; i <= endPage; i++) {
     const ordersPage = await processOrders(year, i);
+    logger.info(`Page ${i}: Found ${ordersPage.length} orders`);
     orderCards = orderCards.concat(ordersPage);
     await updateProgress(ProgressPhase.AmazonPageScan, endPage, i);
   }
+
+  logger.success('All pages scanned', { totalOrders: orderCards.length, pages: endPage });
 
   const allOrders: Order[] = [];
 
@@ -125,15 +141,25 @@ export async function fetchOrders(year: number | undefined): Promise<Order[]> {
       }
       if (orderData) {
         allOrders.push(orderData);
+        if (allOrders.length % 5 === 0) {
+          logger.info(`Downloaded ${allOrders.length}/${orderCards.length} order details`);
+        }
       }
     } catch (e: unknown) {
       await debugLog(e);
+      logger.error(`Failed to process order ${orderCard.id}`, e);
     }
 
     await updateProgress(ProgressPhase.AmazonOrderDownload, orderCards.length, allOrders.length);
   };
 
   await Throttle.all(orderCards.map(orderCard => () => processOrder(orderCard)));
+
+  logger.success('All order details downloaded', {
+    total: allOrders.length,
+    withItems: allOrders.filter(o => o.items.length > 0).length,
+    withTransactions: allOrders.filter(o => o.transactions.length > 0).length,
+  });
 
   console.log(allOrders);
 

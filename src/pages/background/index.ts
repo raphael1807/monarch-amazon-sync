@@ -9,10 +9,12 @@ import appStorage, { AuthStatus, FailureReason, LastSync, Page } from '@root/src
 import { Action } from '@root/src/shared/types';
 import debugStorage, { debugLog } from '@root/src/shared/storages/debugStorage';
 import { addSyncRecord } from '@root/src/shared/storages/syncHistoryStorage';
+import { logger, timeOperation } from '@root/src/shared/utils/logger';
 
 reloadOnUpdate('pages/background');
 
 // Log when service worker starts
+logger.header('Monarch/Amazon Sync Extension v1.0.0 - Service Worker Started');
 console.log('🚀 Monarch/Amazon Sync Extension Service Worker Started');
 debugLog('Service worker started');
 
@@ -146,14 +148,22 @@ async function inProgress() {
 }
 
 async function handleDryRun(payload: Payload | undefined, sendResponse: (args: unknown) => void) {
+  logger.header('DRY-RUN STARTED');
+  logger.info('Mode: Dry-Run (Preview Only)', { year: payload?.year || 'Current' });
+
   if (await inProgress()) {
+    logger.warning('Sync already in progress - aborting');
     sendResponse({ success: false });
     return;
   }
+
   if (await downloadAndStoreTransactions(payload?.year, true)) {
+    logger.success('Dry-run completed successfully');
     sendResponse({ success: true });
     return;
   }
+
+  logger.error('Dry-run failed');
   sendResponse({ success: false });
 }
 
@@ -228,7 +238,10 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
   const appData = await appStorage.get();
   const year = yearString ? parseInt(yearString) : undefined;
 
+  logger.step('Checking Monarch authentication', { hasKey: !!appData.monarchKey });
+
   if (!appData.monarchKey) {
+    logger.error('No Monarch API key found - user not authenticated');
     await logSyncComplete({ success: false, failureReason: FailureReason.NoMonarchAuth }, startTime);
     return false;
   }
@@ -237,19 +250,33 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
 
   let orders: Order[];
   try {
-    await debugLog('Fetching Amazon orders');
-    orders = await fetchOrders(year);
+    orders = await timeOperation('Fetch Amazon Orders', async () => {
+      logger.step('Fetching Amazon orders', { year: year || 'Current' });
+      await debugLog('Fetching Amazon orders');
+      return await fetchOrders(year);
+    });
+
+    logger.success('Amazon orders fetched', { count: orders.length });
   } catch (e) {
     await debugLog(e);
+    logger.error('Failed to fetch Amazon orders', e);
     await logSyncComplete({ success: false, failureReason: FailureReason.AmazonError }, startTime);
     return false;
   }
 
   if (!orders || orders.length === 0) {
     await debugLog('No Amazon orders found');
+    logger.warning('No Amazon orders found', { year });
     await logSyncComplete({ success: false, failureReason: FailureReason.NoAmazonOrders }, startTime);
     return false;
   }
+
+  logger.info('Amazon orders summary', {
+    total: orders.length,
+    withItems: orders.filter(o => o.items.length > 0).length,
+    withTransactions: orders.filter(o => o.transactions.length > 0).length,
+  });
+
   await transactionStorage.patch({
     orders: orders,
   });
@@ -269,16 +296,28 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
     endDate.setDate(startDate.getDate() + 8);
   }
 
+  logger.step('Fetching Monarch transactions', {
+    merchant: appData.options.amazonMerchant,
+    dateRange: `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`,
+  });
+
   let monarchTransactions: MonarchTransaction[];
   try {
     await debugLog('Fetching Monarch transactions');
-    monarchTransactions = await getTransactions(appData.monarchKey, appData.options.amazonMerchant, startDate, endDate);
+    monarchTransactions = await timeOperation('Fetch Monarch Transactions', async () => {
+      return await getTransactions(appData.monarchKey!, appData.options.amazonMerchant, startDate, endDate);
+    });
+
     if (!monarchTransactions || monarchTransactions.length === 0) {
+      logger.warning('No Monarch transactions found');
       await logSyncComplete({ success: false, failureReason: FailureReason.NoMonarchTransactions }, startTime);
       return false;
     }
+
+    logger.success('Monarch transactions fetched', { count: monarchTransactions.length });
   } catch (ex) {
     await debugLog(ex);
+    logger.error('Failed to fetch Monarch transactions', ex);
     await logSyncComplete({ success: false, failureReason: FailureReason.MonarchError }, startTime);
     return false;
   }
@@ -289,7 +328,38 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
   });
 
   if (dryRun) {
+    logger.step('Matching transactions (Dry-Run)');
     const matches = matchTransactions(monarchTransactions, orders, appData.options.overrideTransactions);
+
+    logger.success('Matching complete', {
+      amazonOrders: orders.length,
+      monarchTransactions: monarchTransactions.length,
+      matches: matches.length,
+      matchRate: `${((matches.length / orders.length) * 100).toFixed(1)}%`,
+    });
+
+    // Show top matches
+    if (matches.length > 0) {
+      logger.group('Top 5 Matches', () => {
+        matches.slice(0, 5).forEach((match, idx) => {
+          console.log(`${idx + 1}. ${match.amazon.id} → ${match.monarch.id}`, {
+            confidence: `${match.confidence}%`,
+            amount: `$${match.amazon.amount.toFixed(2)}`,
+            items: match.items.length,
+          });
+        });
+      });
+    }
+
+    logger.summary({
+      Mode: 'DRY-RUN',
+      'Amazon Orders': orders.length,
+      'Monarch Transactions': monarchTransactions.length,
+      'Matches Found': matches.length,
+      'Match Rate': `${((matches.length / orders.length) * 100).toFixed(1)}%`,
+      Duration: `${((Date.now() - startTime) / 1000).toFixed(2)}s`,
+    });
+
     await logSyncComplete(
       {
         success: true,
@@ -307,12 +377,14 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
 }
 
 async function updateMonarchTransactions(startTime?: number) {
+  logger.header('LIVE SYNC - Updating Monarch Transactions');
   await progressStorage.patch({ phase: ProgressPhase.MonarchUpload, total: 0, complete: 0 });
 
   const transactions = await transactionStorage.get();
   const appData = await appStorage.get();
 
   if (!appData.monarchKey) {
+    logger.error('No Monarch API key');
     await logSyncComplete(
       {
         success: false,
@@ -331,6 +403,15 @@ async function updateMonarchTransactions(startTime?: number) {
     appData.options.overrideTransactions,
   );
 
+  logger.step('Matching transactions', {
+    amazonOrders: transactions.orders.length,
+    monarchTransactions: transactions.transactions.length,
+    matches: matches.length,
+  });
+
+  let updated = 0;
+  let skipped = 0;
+
   for (const data of matches) {
     const itemString = data.items
       .map(item => {
@@ -338,23 +419,46 @@ async function updateMonarchTransactions(startTime?: number) {
       })
       .join('\n\n')
       .trim();
+
     if (itemString.length === 0) {
       await debugLog('No items found for transaction ' + data.monarch.id);
+      logger.warning(`Transaction ${data.monarch.id} has no items - skipping`);
+      skipped++;
       continue;
     }
+
     if (data.monarch.notes === itemString) {
       await debugLog('Transaction ' + data.monarch.id + ' already has correct note');
+      logger.info(`Transaction ${data.monarch.id} already up to date - skipping`);
+      skipped++;
       continue;
     }
 
     updateMonarchTransaction(appData.monarchKey, data.monarch.id, itemString);
     await debugLog('Updated transaction ' + data.monarch.id + ' with note ' + itemString);
+    updated++;
+
+    logger.success(`Updated transaction ${updated}/${matches.length}`, {
+      monarchId: data.monarch.id,
+      items: data.items.length,
+      confidence: `${data.confidence}%`,
+    });
+
     await progressStorage.patch({
       total: matches.length,
       complete: matches.indexOf(data) + 1,
     });
     await new Promise(resolve => setTimeout(resolve, 500));
   }
+
+  logger.summary({
+    'Amazon Orders': transactions.orders.length,
+    'Monarch Transactions': transactions.transactions.length,
+    'Matches Found': matches.length,
+    Updated: updated,
+    Skipped: skipped,
+    Duration: `${((Date.now() - (startTime || Date.now())) / 1000).toFixed(2)}s`,
+  });
 
   await logSyncComplete(
     {
