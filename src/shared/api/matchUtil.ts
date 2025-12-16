@@ -51,15 +51,35 @@ export function matchTransactions(
     );
   });
 
+  const refundCount = orderTransactions.filter(t => t.refund).length;
+  const purchaseCount = orderTransactions.filter(t => !t.refund).length;
+
   console.log('📦 Amazon transactions to match:', {
     total: orderTransactions.length,
+    purchases: purchaseCount,
+    refunds: refundCount,
     sample: orderTransactions.slice(0, 5).map(t => ({
       date: t.date,
       amount: t.amount,
       id: t.id,
-      refund: t.refund,
+      refund: t.refund ? '🔄 YES' : 'No',
     })),
   });
+
+  // Show refund samples separately if any exist
+  if (refundCount > 0) {
+    console.log('🔄 Refund transactions found:', {
+      count: refundCount,
+      samples: orderTransactions
+        .filter(t => t.refund)
+        .slice(0, 3)
+        .map(t => ({
+          date: t.date,
+          amount: t.amount,
+          id: t.id,
+        })),
+    });
+  }
 
   console.log('💳 Monarch transactions available:', {
     total: transactions.length,

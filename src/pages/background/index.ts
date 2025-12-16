@@ -477,10 +477,33 @@ async function updateMonarchTransactions(startTime?: number) {
     const order = transactions.orders.find(o => o.transactions.some(t => t.id === data.amazon.id));
 
     // Build complete note with items + invoice URLs
-    let fullNote = itemString;
+    let fullNote = '';
 
+    // Add refund indicator at the top if this is a refund
+    if (data.amazon.refund) {
+      fullNote = '🔄 REFUND - Same items as original order\n\n';
+      logger.info('Processing refund transaction', {
+        monarchId: data.monarch.id,
+        amount: data.amazon.amount,
+        originalOrderId: data.amazon.id,
+      });
+    }
+
+    fullNote += itemString;
+
+    // Add invoice URLs if available
     if (order && order.invoiceUrls && order.invoiceUrls.length > 0) {
       fullNote += '\n\n📄 Invoices:\n' + order.invoiceUrls.map((url, i) => `${i + 1}. ${url}`).join('\n');
+
+      logger.info(`Adding ${order.invoiceUrls.length} PDF invoice(s)`, {
+        orderId: order.id,
+        monarchId: data.monarch.id,
+      });
+    } else {
+      logger.warning('No PDF invoices found for order', {
+        orderId: data.amazon.id,
+        monarchId: data.monarch.id,
+      });
     }
 
     if (data.monarch.notes === fullNote) {
@@ -495,12 +518,20 @@ async function updateMonarchTransactions(startTime?: number) {
       await debugLog('Updated transaction ' + data.monarch.id + ' with note ' + fullNote);
       updated++;
 
-      logger.success(`Updated transaction ${updated}/${matches.length}`, {
+      logger.success(`✓ Updated transaction ${updated}/${matches.length}`, {
         monarchId: data.monarch.id,
         items: data.items.length,
         hasInvoices: order?.invoiceUrls?.length || 0,
+        isRefund: data.amazon.refund,
         confidence: `${data.confidence}%`,
       });
+
+      // Show note preview for first 2 updates
+      if (updated <= 2) {
+        console.group(`📝 Note Preview (Transaction ${updated})`);
+        console.log(fullNote);
+        console.groupEnd();
+      }
     } catch (error) {
       logger.error(`Failed to update transaction ${data.monarch.id}`, error);
       skipped++;

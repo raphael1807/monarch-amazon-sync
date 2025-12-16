@@ -207,25 +207,37 @@ function orderCardsFromPage($: CheerioAPI): OrderCard[] {
 }
 
 async function fetchRefundTransactions(orderId: string): Promise<OrderTransaction[]> {
-  await debugLog('Fetching order details ' + orderId);
+  await debugLog('Fetching refund details for ' + orderId);
+  logger.step('Checking for refunds', { orderId });
+
   const res = await fetch(ORDER_RETURNS_URL + '?orderID=' + orderId);
-  await debugLog('Got order invoice response ' + res.status + ' for order ' + orderId);
+  await debugLog('Got refund page response ' + res.status + ' for order ' + orderId);
   const text = await res.text();
   const $ = load(text);
 
-  // TODO: We can parse out individual refunded items here
+  // Parse refund transactions
   const transactions: OrderTransaction[] = [];
-  $('span.a-color-secondary:contains("refund issued on")').each((_, el) => {
+  $('span.a-color-secondary:contains("refund issued on"), span:contains("remboursement émis")').each((_, el) => {
     const refundLine = $(el).text();
-    const refundAmount = refundLine.split('refund')[0].trim();
-    const refundDate = refundLine.split('on')[1].replace('.', '').trim();
-    transactions.push({
-      id: orderId,
-      date: refundDate,
-      amount: moneyToNumber(refundAmount),
-      refund: true,
-    });
+    const refundAmount = refundLine.split(/refund|remboursement/i)[0].trim();
+    const refundDate = refundLine.split(/on|le/i)[1]?.replace('.', '').trim();
+
+    if (refundDate) {
+      const amount = moneyToNumber(refundAmount);
+      transactions.push({
+        id: orderId,
+        date: refundDate,
+        amount: amount,
+        refund: true,
+      });
+
+      logger.success('Refund found', { orderId, amount, date: refundDate });
+    }
   });
+
+  if (transactions.length === 0) {
+    logger.info('No refunds found for order', { orderId });
+  }
 
   return transactions;
 }
