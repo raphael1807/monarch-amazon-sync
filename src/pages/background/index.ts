@@ -11,6 +11,10 @@ import debugStorage, { debugLog } from '@root/src/shared/storages/debugStorage';
 
 reloadOnUpdate('pages/background');
 
+// Log when service worker starts
+console.log('🚀 Monarch/Amazon Sync Extension Service Worker Started');
+debugLog('Service worker started');
+
 async function checkAlarm() {
   const alarm = await chrome.alarms.get('sync-alarm');
 
@@ -44,6 +48,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     return true;
   }
   if (changeInfo.url) {
+    console.log('🔍 Tab URL changed:', changeInfo.url);
     const url = new URL(changeInfo.url);
     if (url.hostname === 'app.monarchmoney.com' || url.hostname === 'app.monarch.com') {
       await debugLog(`Detected Monarch page: ${url.hostname}`);
