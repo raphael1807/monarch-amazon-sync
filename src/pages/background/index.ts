@@ -46,6 +46,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.url) {
     const url = new URL(changeInfo.url);
     if (url.hostname === 'app.monarchmoney.com' || url.hostname === 'app.monarch.com') {
+      await debugLog(`Detected Monarch page: ${url.hostname}`);
       const appData = await appStorage.get();
       const lastAuth = new Date(appData.lastMonarchAuth);
       if (
@@ -53,6 +54,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         appData.monarchStatus !== AuthStatus.Success ||
         lastAuth < new Date(Date.now() - 1000 * 60 * 60 * 24 * 7)
       ) {
+        await debugLog('Checking Monarch auth');
         // Execute script in the current tab
         const result = await chrome.scripting.executeScript({
           target: { tabId: tabId },
@@ -61,14 +63,19 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         try {
           const key = JSON.parse(JSON.parse(result[0].result).user).token;
           if (key) {
+            await debugLog('Monarch auth success');
             await appStorage.patch({ monarchKey: key, lastMonarchAuth: Date.now(), monarchStatus: AuthStatus.Success });
           } else {
+            await debugLog('Monarch auth failed: No token found');
             await appStorage.patch({ monarchStatus: AuthStatus.NotLoggedIn });
           }
         } catch (ex) {
+          await debugLog('Monarch auth failed with error: ' + ex);
           await appStorage.patch({ monarchStatus: AuthStatus.Failure });
           debugLog(ex);
         }
+      } else {
+        await debugLog('Monarch already authenticated, skipping');
       }
     }
   }
