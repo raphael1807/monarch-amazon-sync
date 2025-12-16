@@ -61,11 +61,14 @@ export function ManualBackfillClean() {
         <YearSelector oldestYear={appData.oldestAmazonYear} onSelect={year => setYear(year)} />
       </div>
 
-      {/* Dry Run Toggle */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <ToggleSwitch checked={dryRun} label="Safe Mode (Dry-Run)" onChange={setDryRun} />
-        <p className="text-xs text-blue-700 mt-2">
-          {dryRun ? '✓ Preview changes without modifying Monarch' : '⚠️ Will update Monarch transactions'}
+      {/* Dry Run Toggle - More Prominent */}
+      <div className={`border-2 rounded-lg p-4 ${dryRun ? 'bg-blue-50 border-blue-400' : 'bg-red-50 border-red-400'}`}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-bold text-gray-900">Safe Mode (Dry-Run)</span>
+          <ToggleSwitch checked={dryRun} onChange={setDryRun} />
+        </div>
+        <p className={`text-xs font-medium ${dryRun ? 'text-blue-800' : 'text-red-800'}`}>
+          {dryRun ? '✓ Preview only - No Monarch changes' : '⚠️ LIVE MODE - Will update Monarch!'}
         </p>
       </div>
 
