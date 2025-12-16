@@ -210,7 +210,13 @@ async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
   const text = await res.text();
   const $ = load(text);
 
-  const date = $('td b:contains("Order Placed:")')
+  // Support both English and French text
+  const dateElement =
+    $('td b:contains("Order Placed:")').length > 0
+      ? $('td b:contains("Order Placed:")')
+      : $('td b:contains("Commande effectuée")'); // French
+
+  const date = dateElement
     .parent()
     .contents()
     .filter(function () {
@@ -230,7 +236,13 @@ async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
 
   // Find the items ordered section and parse the items
   // Orders can span multiple tables by order date
-  $('#pos_view_section:contains("Items Ordered")')
+  // Support both English ("Items Ordered") and French ("Articles commandés")
+  const itemsSection =
+    $('#pos_view_section:contains("Items Ordered")').length > 0
+      ? $('#pos_view_section:contains("Items Ordered")')
+      : $('#pos_view_section:contains("Articles commandés")'); // French
+
+  itemsSection
     .find('table')
     .find('table')
     .find('table')
@@ -266,8 +278,13 @@ async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
         });
     });
 
-  // Find any gift card transactions
-  const giftCardAmount = moneyToNumber($('td:contains("Gift Card Amount")').siblings().last().text());
+  // Find any gift card transactions (English and French)
+  const giftCardElement =
+    $('td:contains("Gift Card Amount")').length > 0
+      ? $('td:contains("Gift Card Amount")')
+      : $('td:contains("Montant de la carte-cadeau")'); // French
+
+  const giftCardAmount = moneyToNumber(giftCardElement.siblings().last().text());
   if (giftCardAmount) {
     transactions.push({
       id: orderId,
@@ -278,7 +295,13 @@ async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
   }
 
   // Find the transaction total - a single order can span multiple transactions
-  $("div:contains('Credit Card transactions')")
+  // Support English and French
+  const creditCardSection =
+    $("div:contains('Credit Card transactions')").length > 0
+      ? $("div:contains('Credit Card transactions')")
+      : $("div:contains('Transactions par carte de crédit')"); // French
+
+  creditCardSection
     .parent()
     .siblings()
     .last()
