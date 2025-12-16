@@ -399,5 +399,21 @@ async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
 }
 
 export function moneyToNumber(money: string, absoluteValue = true) {
-  return parseFloat(money?.replace(absoluteValue ? /[$\s-]/g : /[$\s]/g, ''));
+  if (!money) return 0;
+
+  // Handle French format: replace comma with dot for decimal
+  // "106,89 $" → "106.89"
+  let cleaned = money.replace(/[$\s]/g, ''); // Remove $ and spaces
+
+  // Replace comma with dot (French decimal separator)
+  cleaned = cleaned.replace(',', '.');
+
+  // Handle minus sign
+  if (absoluteValue) {
+    cleaned = cleaned.replace(/-/g, '');
+  }
+
+  const result = parseFloat(cleaned);
+  console.log(`💰 Parsed amount: "${money}" → ${result}`);
+  return result;
 }

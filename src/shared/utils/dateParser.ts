@@ -27,13 +27,7 @@ export function parseFrenchDate(dateStr: string): string | null {
   if (!dateStr) return null;
 
   try {
-    // Try standard formats first
-    const standardDate = new Date(dateStr);
-    if (!isNaN(standardDate.getTime())) {
-      return standardDate.toISOString().split('T')[0];
-    }
-
-    // Parse French format: "7 décembre 2025"
+    // Parse French format first: "7 décembre 2025"
     const parts = dateStr.trim().toLowerCase().split(/\s+/);
 
     if (parts.length >= 3) {
@@ -45,11 +39,21 @@ export function parseFrenchDate(dateStr: string): string | null {
 
       if (!isNaN(day) && month !== undefined && !isNaN(year)) {
         const date = new Date(year, month, day);
-        return date.toISOString().split('T')[0];
+        const result = date.toISOString().split('T')[0];
+        console.log(`✓ Parsed French date: "${dateStr}" → ${result}`);
+        return result;
       }
     }
 
-    console.warn('Could not parse date:', dateStr);
+    // Try standard formats as fallback
+    const standardDate = new Date(dateStr);
+    if (!isNaN(standardDate.getTime())) {
+      const result = standardDate.toISOString().split('T')[0];
+      console.log(`✓ Parsed standard date: "${dateStr}" → ${result}`);
+      return result;
+    }
+
+    console.warn('❌ Could not parse date:', dateStr);
     return null;
   } catch (e) {
     console.error('Error parsing date:', dateStr, e);

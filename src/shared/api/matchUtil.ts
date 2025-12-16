@@ -53,20 +53,27 @@ export function matchTransactions(
 
   console.log('📦 Amazon transactions to match:', {
     total: orderTransactions.length,
-    sample: orderTransactions.slice(0, 3).map(t => ({
+    sample: orderTransactions.slice(0, 5).map(t => ({
+      date: t.date,
+      amount: t.amount,
+      id: t.id,
+      refund: t.refund,
+    })),
+  });
+
+  console.log('💳 Monarch transactions available:', {
+    total: transactions.length,
+    sample: transactions.slice(0, 5).map(t => ({
       date: t.date,
       amount: t.amount,
       id: t.id,
     })),
   });
 
-  console.log('💳 Monarch transactions available:', {
-    total: transactions.length,
-    sample: transactions.slice(0, 3).map(t => ({
-      date: t.date,
-      amount: t.amount,
-      id: t.id,
-    })),
+  console.log('📊 Comparison logic:', {
+    dateTolerance: '±7 days',
+    amountTolerance: '<$1.00',
+    note: 'Amazon amounts are negated for comparison',
   });
 
   // find monarch transactions that match amazon orders. don't allow duplicates
@@ -95,8 +102,9 @@ export function matchTransactions(
       const upper = orderTimestamp + DAYS_7;
       const matchesDate = monarchTimestamp >= lower && monarchTimestamp <= upper;
 
-      // Check if amounts match
-      const amountsMatch = Math.abs(monarchTransaction.amount - amazonTransaction.amount) < 0.01;
+      // Check if amounts match (allow for rounding differences - Amazon.ca totals may not include cents)
+      const amountDiff = Math.abs(monarchTransaction.amount - amazonTransaction.amount);
+      const amountsMatch = amountDiff < 1.0; // Allow up to $1 difference
 
       // Log potential matches for debugging
       if (matchesDate && amountsMatch) {
@@ -105,17 +113,14 @@ export function matchTransactions(
           amazonDate: amazonTransaction.date,
           monarchAmount: monarchTransaction.amount,
           amazonAmount: amazonTransaction.amount,
+          amountDiff: amountDiff.toFixed(2),
           daysDiff: Math.floor(Math.abs(monarchTimestamp - orderTimestamp) / (1000 * 60 * 60 * 24)),
         });
       }
 
-      // get the closest transaction
+      // get the closest transaction by date and amount
       const distance = Math.abs(monarchTimestamp - orderTimestamp);
-      if (
-        monarchTransaction.amount === amazonTransaction.amount &&
-        matchesDate &&
-        (closestDistance === null || distance < closestDistance)
-      ) {
+      if (amountsMatch && matchesDate && (closestDistance === null || distance < closestDistance)) {
         closestAmazon = amazonTransaction;
         closestDistance = distance;
       }
