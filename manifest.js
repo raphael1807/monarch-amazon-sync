@@ -8,7 +8,7 @@ const packageJson = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
  */
 const manifest = {
   manifest_version: 3,
-  name: 'Monarch / Amazon Sync',
+  name: `Monarch / Amazon Sync (CA) v${packageJson.version}`,
   version: packageJson.version,
   description: packageJson.description,
   permissions: ['storage', 'tabs', 'scripting', 'alarms', 'downloads'],
