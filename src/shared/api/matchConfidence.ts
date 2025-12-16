@@ -1,5 +1,6 @@
 import type { MonarchTransaction } from './monarchApi';
 import type { Order } from './amazonApi';
+import { parseFrenchDateToTimestamp } from '../utils/dateParser';
 
 export interface MatchWithConfidence {
   amazon: Order;
@@ -25,9 +26,15 @@ export function calculateMatchConfidence(
   const monarchAmount = Math.abs(monarchTransaction.amount);
   const amountDiff = Math.abs(amazonAmount - monarchAmount);
 
-  const amazonDate = new Date(amazonOrder.date);
-  const monarchDate = new Date(monarchTransaction.date);
-  const daysDiff = Math.abs(Math.floor((amazonDate.getTime() - monarchDate.getTime()) / (1000 * 60 * 60 * 24)));
+  // Parse dates - handle French format from Amazon.ca
+  const amazonTimestamp = parseFrenchDateToTimestamp(amazonOrder.date) || new Date(amazonOrder.date).getTime();
+  const monarchTimestamp = new Date(monarchTransaction.date).getTime();
+
+  if (isNaN(amazonTimestamp) || isNaN(monarchTimestamp)) {
+    return { confidence: 0, reason: 'Invalid dates' };
+  }
+
+  const daysDiff = Math.abs(Math.floor((amazonTimestamp - monarchTimestamp) / (1000 * 60 * 60 * 24)));
 
   let confidence = 100;
   const reasons: string[] = [];

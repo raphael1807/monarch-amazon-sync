@@ -1,6 +1,7 @@
 import { Item, Order, OrderTransaction } from './amazonApi';
 import { MonarchTransaction } from './monarchApi';
 import { calculateMatchConfidence } from './matchConfidence';
+import { parseFrenchDateToTimestamp } from '../utils/dateParser';
 
 export type MatchedTransaction = {
   monarch: MonarchTransaction;
@@ -12,11 +13,29 @@ export type MatchedTransaction = {
 
 const DAYS_7 = 1000 * 60 * 60 * 24 * 7;
 
+function parseDate(dateStr: string): number | null {
+  // Try French date parser first (for Amazon.ca)
+  const frenchTimestamp = parseFrenchDateToTimestamp(dateStr);
+  if (frenchTimestamp) return frenchTimestamp;
+
+  // Fallback to standard Date parsing
+  const date = new Date(dateStr);
+  if (!isNaN(date.getTime())) return date.getTime();
+
+  console.warn('Could not parse date:', dateStr);
+  return null;
+}
+
 export function matchTransactions(
   transactions: MonarchTransaction[],
   orders: Order[],
   override: boolean,
 ): MatchedTransaction[] {
+  console.log('🔍 Starting match algorithm', {
+    monarchTransactions: transactions.length,
+    amazonOrders: orders.length,
+  });
+
   const orderTransactions = orders.flatMap(order => {
     return (
       order.transactions?.map(transaction => {
@@ -32,26 +51,66 @@ export function matchTransactions(
     );
   });
 
+  console.log('📦 Amazon transactions to match:', {
+    total: orderTransactions.length,
+    sample: orderTransactions.slice(0, 3).map(t => ({
+      date: t.date,
+      amount: t.amount,
+      id: t.id,
+    })),
+  });
+
+  console.log('💳 Monarch transactions available:', {
+    total: transactions.length,
+    sample: transactions.slice(0, 3).map(t => ({
+      date: t.date,
+      amount: t.amount,
+      id: t.id,
+    })),
+  });
+
   // find monarch transactions that match amazon orders. don't allow duplicates
   const monarchAmazonTransactions = [];
   for (const monarchTransaction of transactions) {
-    const monarchDate = new Date(monarchTransaction.date);
+    const monarchTimestamp = parseDate(monarchTransaction.date);
+    if (!monarchTimestamp) {
+      console.warn('Could not parse Monarch date:', monarchTransaction.date);
+      continue;
+    }
+
     let closestAmazon = null;
     let closestDistance = null;
     for (const amazonTransaction of orderTransactions) {
       // we already matched this transaction
       if (amazonTransaction.used) continue;
 
-      const orderDate = new Date(amazonTransaction.date);
-      if (isNaN(orderDate.getTime())) continue;
+      const orderTimestamp = parseDate(amazonTransaction.date);
+      if (!orderTimestamp) {
+        console.warn('Could not parse Amazon date:', amazonTransaction.date);
+        continue;
+      }
 
       // look for Monarch transactions that are within 7 days of the Amazon transaction
-      const lower = orderDate.getTime() - DAYS_7;
-      const upper = orderDate.getTime() + DAYS_7;
-      const matchesDate = monarchDate.getTime() >= lower && monarchDate.getTime() <= upper;
+      const lower = orderTimestamp - DAYS_7;
+      const upper = orderTimestamp + DAYS_7;
+      const matchesDate = monarchTimestamp >= lower && monarchTimestamp <= upper;
+
+      // Check if amounts match
+      const amountsMatch = Math.abs(monarchTransaction.amount - amazonTransaction.amount) < 0.01;
+
+      // Log potential matches for debugging
+      if (matchesDate && amountsMatch) {
+        console.log('🎯 Potential match found:', {
+          monarchDate: monarchTransaction.date,
+          amazonDate: amazonTransaction.date,
+          monarchAmount: monarchTransaction.amount,
+          amazonAmount: amazonTransaction.amount,
+          daysDiff: Math.floor(Math.abs(monarchTimestamp - orderTimestamp) / (1000 * 60 * 60 * 24)),
+        });
+      }
 
       // get the closest transaction
-      const distance = Math.abs(monarchDate.getTime() - orderDate.getTime());
+      const distance = Math.abs(monarchTimestamp - orderTimestamp);
       if (
         monarchTransaction.amount === amazonTransaction.amount &&
         matchesDate &&
