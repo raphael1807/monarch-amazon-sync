@@ -242,7 +242,7 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
   await debugStorage.set({ logs: [] });
 
   const appData = await appStorage.get();
-  const year = yearString ? parseInt(yearString) : undefined;
+  const year = yearString && yearString !== 'recent' ? parseInt(yearString) : undefined;
 
   logger.step('Checking Monarch authentication', { hasKey: !!appData.monarchKey });
 
