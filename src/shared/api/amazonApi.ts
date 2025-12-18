@@ -408,31 +408,22 @@ async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
       });
   }
 
-  // Extract invoice PDF URLs from the page
-  const invoiceUrls: string[] = [];
+  // ALWAYS try to get invoice URLs from popover (more reliable than HTML page)
+  let invoiceUrls: string[] = [];
 
-  // Look for invoice download links (usually in a dropdown or links section)
-  $('a[href*="/documents/download/"], a[href*="invoice.pdf"]').each((i, el) => {
-    const href = $(el).attr('href');
-    if (href && href.includes('invoice.pdf')) {
-      const fullUrl = href.startsWith('http') ? href : `https://www.amazon.ca${href}`;
-      invoiceUrls.push(fullUrl);
-    }
-  });
-
-  // Fallback: try to construct invoice URLs based on common patterns
-  if (invoiceUrls.length === 0) {
-    // Check for data attributes or script tags that might contain invoice URLs
-    const scripts = $('script:contains("invoice")');
-    scripts.each((i, el) => {
-      const scriptContent = $(el).html() || '';
-      const matches = scriptContent.match(/\/documents\/download\/[\w-]+\/invoice\.pdf/g);
-      if (matches) {
-        matches.forEach(match => {
-          invoiceUrls.push(`https://www.amazon.ca${match}`);
-        });
+  // For ALL orders, try to fetch invoice popover to get PDF URLs
+  try {
+    const popoverHtml = await fetchInvoicePopover(orderId);
+    if (popoverHtml) {
+      const pdfLinks = extractPdfLinks(popoverHtml);
+      if (pdfLinks.length > 0) {
+        invoiceUrls = pdfLinks;
+        logger.info(`Found ${pdfLinks.length} invoice URL(s) from popover`);
       }
-    });
+    }
+  } catch (error) {
+    // Continue if popover fetch fails
+    logger.warning(`Could not fetch invoice popover for ${orderId}`);
   }
 
   logger.info(`HTML extraction complete`, {

@@ -276,6 +276,9 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
     appData.options.customEndDate,
   );
 
+  // Auto-enable override for custom date ranges (user wants to re-sync specific period)
+  const shouldOverride = rangeType === 'custom' || appData.options.overrideTransactions;
+
   // Log to both console and trace file
   const dateRangeInfo = {
     type: rangeType,
@@ -283,6 +286,7 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
     end: endDate.toISOString().split('T')[0],
     customStart: appData.options.customStartDate,
     customEnd: appData.options.customEndDate,
+    overrideMode: shouldOverride,
   };
 
   logger.info('📅 Date range selected', dateRangeInfo);
@@ -293,6 +297,7 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
   if (rangeType === 'custom') {
     logToFile(`   Custom Start Input: ${appData.options.customStartDate || 'not set'}`);
     logToFile(`   Custom End Input: ${appData.options.customEndDate || 'not set'}`);
+    logToFile(`   Override Mode: ENABLED (auto for custom ranges)`);
   }
 
   // Legacy: still support year parameter if provided
@@ -467,10 +472,13 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
     return true;
   }
 
+  // Pass override flag to update function
+  await updateMonarchTransactions(startTime, shouldOverride);
+
   return true;
 }
 
-async function updateMonarchTransactions(startTime?: number) {
+async function updateMonarchTransactions(startTime?: number, forceOverride: boolean = false) {
   logger.header('LIVE SYNC - Updating Monarch Transactions');
 
   // Auto-cleanup: Remove processed transactions older than 30 days
@@ -505,11 +513,9 @@ async function updateMonarchTransactions(startTime?: number) {
     return false;
   }
 
-  const matches = matchTransactions(
-    transactions.transactions,
-    transactions.orders,
-    appData.options.overrideTransactions,
-  );
+  // Use override mode (either from settings OR forced by custom date range)
+  const effectiveOverride = forceOverride || appData.options.overrideTransactions;
+  const matches = matchTransactions(transactions.transactions, transactions.orders, effectiveOverride);
 
   logger.step('Matching transactions', {
     amazonOrders: transactions.orders.length,
@@ -596,7 +602,7 @@ async function updateMonarchTransactions(startTime?: number) {
     }
 
     // Check if this transaction was already processed (unless override mode is on)
-    if (!appData.options.overrideTransactions) {
+    if (!effectiveOverride) {
       const alreadyProcessed = await wasAlreadyProcessed(data.monarch.id, fullNote);
       if (alreadyProcessed) {
         logger.info(`💾 Transaction ${data.monarch.id} already processed (cached) - skipping`);
