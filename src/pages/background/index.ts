@@ -755,10 +755,20 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
 
     for (const candidate of topCandidates) {
       try {
-        // Build item list with prices
+        // Build item list with prices and tax calculations
         const itemsList = order.items
-          .map((item, i) => `   ${i + 1}. ${item.title} - $${item.price.toFixed(2)}`)
-          .join('\n');
+          .map((item, i) => {
+            const price = item.price;
+            const gst = price * 0.05;
+            const qst = price * 0.09975;
+            const withGST = price + gst;
+            const withBoth = price + gst + qst;
+
+            return `   ${i + 1}. ${item.title}
+      Base: $${price.toFixed(2)}
+      + GST: $${withGST.toFixed(2)} | + GST+QST: $${withBoth.toFixed(2)}`;
+          })
+          .join('\n\n');
 
         // Calculate subtotal and possible tax scenarios
         const itemsSubtotal = order.items.reduce((sum, item) => sum + item.price, 0);
