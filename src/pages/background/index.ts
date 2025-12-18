@@ -755,25 +755,56 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
 
     for (const candidate of topCandidates) {
       try {
+        // Build item list with prices
+        const itemsList = order.items
+          .map((item, i) => `   ${i + 1}. ${item.title} - $${item.price.toFixed(2)}`)
+          .join('\n');
+
+        // Calculate subtotal and possible tax scenarios
+        const itemsSubtotal = order.items.reduce((sum, item) => sum + item.price, 0);
+        const monarchAmount = Math.abs(candidate.amount);
+        const gst = itemsSubtotal * 0.05;
+        const qst = itemsSubtotal * 0.09975;
+        const withGST = itemsSubtotal + gst;
+        const withBoth = itemsSubtotal + gst + qst;
+
+        // Find closest match
+        let taxScenario = '';
+        if (Math.abs(monarchAmount - withGST) < 0.5) {
+          taxScenario = `💡 Likely: Subtotal $${itemsSubtotal.toFixed(2)} + GST $${gst.toFixed(2)} = $${withGST.toFixed(
+            2,
+          )}`;
+        } else if (Math.abs(monarchAmount - withBoth) < 0.5) {
+          taxScenario = `💡 Likely: Subtotal $${itemsSubtotal.toFixed(2)} + GST $${gst.toFixed(2)} + QST $${qst.toFixed(
+            2,
+          )} = $${withBoth.toFixed(2)}`;
+        } else if (Math.abs(monarchAmount - itemsSubtotal) < 0.5) {
+          taxScenario = `💡 Likely: Subtotal $${itemsSubtotal.toFixed(2)} (no tax)`;
+        }
+
         const helperNote = `⚠️ POSSIBLE SPLIT INVOICE - VERIFY MANUALLY
 
-This may be part of Amazon order:
-Order #: ${order.id}
+Amazon Order: ${order.id}
 Order Date: ${order.date}
-Order Total: $${Math.abs(order.transactions[0]?.amount || 0).toFixed(2)} (${order.items.length} items)
+Order Total: $${Math.abs(order.transactions[0]?.amount || 0).toFixed(2)}
 
-Your transaction: $${Math.abs(candidate.amount).toFixed(2)} (${candidate.date})
+📦 Items in this order:
+${itemsList}
+
+Items Subtotal: $${itemsSubtotal.toFixed(2)}
+${taxScenario}
+
+Your Monarch transaction: $${monarchAmount.toFixed(2)} (${candidate.date})
 
 This order has ${order.invoiceUrls?.length} separate invoices.
-One likely matches your transaction amount.
+One likely contains the item(s) that match your $${monarchAmount.toFixed(2)}.
 
 📄 Check Invoices:
 ${order.invoiceUrls?.map((url, i) => `${i + 1}. ${url}`).join('\n')}
 
-💡 Open the PDFs to verify. If this matches:
-   • Note which invoice matches
+💡 If this matches:
    • Enable "Override Transactions" in settings
-   • Run sync again to get full item details`;
+   • Run sync again to get full details with tax breakdown`;
 
         await updateMonarchTransaction(appData.monarchKey, candidate.id, helperNote);
         helperNotesAdded++;
