@@ -356,12 +356,18 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
 
   await progressStorage.patch({ phase: ProgressPhase.MonarchDownload, total: 1, complete: 0 });
 
-  // startDate and endDate already calculated above from date range selector
+  // Use the startDate and endDate calculated above from date range selector
+  // (No longer using year-based calculation)
 
   logger.step('Fetching Monarch transactions', {
     merchant: appData.options.amazonMerchant,
     dateRange: `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`,
   });
+
+  logToFile(`\n💳 MONARCH FETCH:`);
+  logToFile(`   Merchant: ${appData.options.amazonMerchant}`);
+  logToFile(`   Start: ${startDate.toISOString().split('T')[0]}`);
+  logToFile(`   End: ${endDate.toISOString().split('T')[0]}`);
 
   let monarchTransactions: MonarchTransaction[];
   try {
