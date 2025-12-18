@@ -5,7 +5,7 @@ import syncHistoryStorage from '@root/src/shared/storages/syncHistoryStorage';
 import { Label, TextInput, ToggleSwitch, Button, Tabs } from 'flowbite-react';
 import { useCallback, useEffect } from 'react';
 import EnhancedSettings from './components/EnhancedSettings';
-import { FaCog, FaTools, FaDownload, FaRedo } from 'react-icons/fa';
+import { FaCog, FaTools, FaDownload, FaRedo, FaFileAlt } from 'react-icons/fa';
 
 export function Options() {
   const { options } = useStorage(appStorage);
@@ -38,6 +38,17 @@ export function Options() {
       await syncHistoryStorage.set({ history: [] });
       alert('History cleared!');
     }
+  }, []);
+
+  const downloadSyncTrace = useCallback(async () => {
+    // Send message to background script to download trace
+    chrome.runtime.sendMessage({ action: 'downloadTrace' }, response => {
+      if (response?.success) {
+        alert(`✅ Trace saved to Downloads/monarch_sync_logs/\n\nFilename: ${response.filename}`);
+      } else {
+        alert('❌ No trace available. Run a sync first!');
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -92,6 +103,11 @@ export function Options() {
         <Tabs.Item title="Debug" icon={FaDownload}>
           <div className="p-4 space-y-3">
             <h3 className="text-lg font-bold text-gray-800">Debug Tools</h3>
+
+            <Button color="success" onClick={downloadSyncTrace} className="w-full">
+              <FaFileAlt className="mr-2" />
+              Download Sync Trace
+            </Button>
 
             {logs && logs.length > 0 && (
               <Button color="light" onClick={downloadDebugLog} className="w-full">

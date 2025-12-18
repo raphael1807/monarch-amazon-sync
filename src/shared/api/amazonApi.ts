@@ -5,11 +5,13 @@ import * as Throttle from 'promise-parallel-throttle';
 import { debugLog } from '../storages/debugStorage';
 import { AuthStatus } from '../storages/appStorage';
 import { logger } from '../utils/logger';
+import { logToFile, logOrderProcessing, logPdfExtraction } from '../utils/fileLogger';
 
 const ORDER_PAGES_URL = 'https://www.amazon.ca/gp/css/order-history?disableCsd=no-js';
 const ORDER_RETURNS_URL = 'https://www.amazon.ca/spr/returns/cart';
-
 const ORDER_INVOICE_URL = 'https://www.amazon.ca/gp/css/summary/print.html';
+const ORDER_INVOICE_POPOVER_URL = 'https://www.amazon.ca/your-orders/invoice/popover';
+const AMAZON_BASE_URL = 'https://www.amazon.ca';
 
 export type AmazonInfo = {
   status: AuthStatus;
@@ -243,9 +245,11 @@ async function fetchRefundTransactions(orderId: string): Promise<OrderTransactio
 }
 
 async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
-  await debugLog('Fetching order invoice ' + orderId);
+  logger.step('📄 Processing order invoice', { orderId });
+
   const res = await fetch(ORDER_INVOICE_URL + '?orderID=' + orderId);
-  await debugLog('Got order invoice response ' + res.status + ' for order ' + orderId);
+  logger.info('HTML invoice loaded', { status: res.status });
+
   const text = await res.text();
   const $ = load(text);
 
@@ -431,7 +435,61 @@ async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
     });
   }
 
-  logger.info(`Found ${invoiceUrls.length} invoice PDF(s) for order ${orderId}`);
+  logger.info(`HTML extraction complete`, {
+    orderId,
+    items: items.length,
+    transactions: transactions.length,
+    pdfLinks: invoiceUrls.length,
+  });
+
+  // Log to file
+  logOrderProcessing(orderId, items.length, transactions.length, invoiceUrls.length);
+
+  // Always show transactions found (important for debugging)
+  transactions.forEach((t, i) => {
+    const line = `  💳 ${i + 1}. $${t.amount} on ${t.date}${t.refund ? ' (REFUND)' : ''}`;
+    console.log(line);
+    logToFile(line);
+  });
+
+  // Check if we should fetch additional PDF invoices
+  // Trigger if: no transactions found OR multiple items with single transaction
+  const shouldFetchPdfs = transactions.length === 0 || (items.length > 1 && transactions.length === 1);
+
+  if (shouldFetchPdfs) {
+    logger.warning('⚠️  Possible split invoices detected', {
+      items: items.length,
+      transactions: transactions.length,
+      reason: transactions.length === 0 ? 'No transactions found' : 'Multiple items but single transaction',
+    });
+
+    console.log('🔍 Triggering PDF invoice popover fetch...');
+    const pdfResult = await fetchTransactionsFromInvoicePopover(orderId);
+
+    // Save PDF URLs to order object for later use
+    if (pdfResult.pdfUrls.length > 0) {
+      invoiceUrls.push(...pdfResult.pdfUrls);
+      logger.success(`✅ Found ${pdfResult.pdfUrls.length} PDF URL(s) - will be added to notes`);
+    }
+
+    if (pdfResult.transactions.length > 0) {
+      transactions.push(...pdfResult.transactions);
+      logger.success(`✅ Added ${pdfResult.transactions.length} transaction(s) from PDF invoices`);
+    } else {
+      logger.warning('⚠️  No additional transactions found from PDF invoices');
+    }
+  } else {
+    console.log('✅ HTML extraction sufficient - skipping PDF fetch');
+  }
+
+  // Summary for ALL orders (important for debugging)
+  console.log(`\n📊 ORDER: ${orderId} | ${items.length} items → ${transactions.length} transactions`);
+  if (transactions.length > 1) {
+    transactions.forEach((t, i) => {
+      console.log(`   ${i + 1}. $${t.amount} on ${t.date}`);
+    });
+    console.log(''); // Extra line for readability
+  }
 
   return {
     ...order,
@@ -439,6 +497,81 @@ async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
     items,
     invoiceUrls: invoiceUrls.length > 0 ? invoiceUrls : undefined,
   };
+}
+
+async function fetchInvoicePopover(orderId: string): Promise<string> {
+  logger.step('🔍 Fetching invoice popover', { orderId });
+  const res = await fetch(ORDER_INVOICE_POPOVER_URL + '?orderId=' + orderId);
+
+  if (!res.ok) {
+    logger.error('Failed to fetch popover', { status: res.status });
+    return '';
+  }
+
+  logger.success('Invoice popover fetched', { status: res.status });
+  return await res.text();
+}
+
+function extractPdfLinks(popoverHtml: string): string[] {
+  logger.info('Searching for PDF links in popover...');
+  const $ = load(popoverHtml);
+  const pdfLinks: string[] = [];
+
+  // Find all links ending in invoice.pdf or documents/download
+  $('a[href*="invoice.pdf"], a[href*="documents/download"]').each((_, el) => {
+    const href = $(el).attr('href');
+    if (href) {
+      const absoluteUrl = href.startsWith('http') ? href : AMAZON_BASE_URL + href;
+      pdfLinks.push(absoluteUrl);
+      console.log(`  📎 Found PDF: ${absoluteUrl.substring(absoluteUrl.length - 50)}`);
+    }
+  });
+
+  logger.info(`Found ${pdfLinks.length} PDF link(s)`);
+  return pdfLinks;
+}
+
+// PDF parsing functions removed - Service Workers don't support PDF.js
+// Instead we extract PDF URLs and add them to transaction notes for manual review
+
+async function fetchTransactionsFromInvoicePopover(orderId: string): Promise<{
+  transactions: OrderTransaction[];
+  pdfUrls: string[];
+}> {
+  try {
+    console.log('\n' + '='.repeat(60));
+    console.log('🔍 CHECKING FOR MULTIPLE PDF INVOICES');
+    console.log('='.repeat(60));
+    logToFile('\n🔍 PDF EXTRACTION STARTED');
+
+    const popoverHtml = await fetchInvoicePopover(orderId);
+    if (!popoverHtml) {
+      logger.warning('Empty popover response');
+      return { transactions: [], pdfUrls: [] };
+    }
+
+    const pdfLinks = extractPdfLinks(popoverHtml);
+
+    if (pdfLinks.length === 0) {
+      logger.warning('No PDF invoices found in popover');
+      return { transactions: [], pdfUrls: [] };
+    }
+
+    logger.success(`📎 Found ${pdfLinks.length} PDF invoice(s)`);
+    logPdfExtraction(orderId, pdfLinks.length);
+
+    // PDF parsing is not supported in Service Workers
+    // Instead, we'll return the PDF URLs so they can be saved to the order
+    logger.warning('⚠️  PDF parsing not supported in Service Workers');
+    logToFile(`   ⚠️  Cannot parse PDFs in Service Worker - PDF URLs will be added to notes`);
+    console.log('   ℹ️  PDF URLs will be added to transaction notes for manual review');
+
+    // Return the PDF URLs so they can be saved to order.invoiceUrls
+    return { transactions: [], pdfUrls: pdfLinks };
+  } catch (e) {
+    logger.error('Failed to process invoice popover', e);
+    return { transactions: [], pdfUrls: [] };
+  }
 }
 
 export function moneyToNumber(money: string, absoluteValue = true) {

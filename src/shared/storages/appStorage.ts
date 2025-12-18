@@ -52,6 +52,8 @@ export type LastSync = {
   dryRun?: boolean;
 };
 
+export type DateRangeOption = '7days' | '30days' | '3months' | 'thisYear' | 'lastYear' | 'custom';
+
 type Options = {
   overrideTransactions: boolean;
   amazonMerchant: string;
@@ -59,6 +61,9 @@ type Options = {
   matchTolerance?: number; // Amount tolerance in dollars (default: 1)
   dateTolerance?: number; // Date tolerance in days (default: 7)
   notifications?: boolean; // Show browser notifications (default: true)
+  dateRangeType?: DateRangeOption; // Last used date range selection
+  customStartDate?: string; // ISO format
+  customEndDate?: string; // ISO format
 };
 
 type State = {
@@ -92,6 +97,7 @@ const appStorage = createStorage<State>(
       matchTolerance: 1,
       dateTolerance: 7,
       notifications: true,
+      dateRangeType: '3months', // Default to 3 months
     },
   },
   {

@@ -10,6 +10,14 @@ import { Action } from '@root/src/shared/types';
 import debugStorage, { debugLog } from '@root/src/shared/storages/debugStorage';
 import { addSyncRecord } from '@root/src/shared/storages/syncHistoryStorage';
 import { logger, timeOperation } from '@root/src/shared/utils/logger';
+import {
+  wasAlreadyProcessed,
+  markAsProcessed,
+  clearOldProcessedTransactions,
+  getCacheStats,
+} from '@root/src/shared/storages/processedTransactionsStorage';
+import { initFileLogger, saveLogFile, logFinalStats, logToFile } from '@root/src/shared/utils/fileLogger';
+import { calculateQuebecTaxes, formatTaxBreakdown } from '@root/src/shared/utils/taxCalculator';
 
 reloadOnUpdate('pages/background');
 
@@ -131,6 +139,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Handle download trace request
+  if (message.action === 'downloadTrace') {
+    saveLogFile()
+      .then(filename => {
+        sendResponse({ success: true, filename });
+      })
+      .catch(error => {
+        logger.error('Failed to save trace file', error);
+        sendResponse({ success: false, error: String(error) });
+      });
+    return true; // Keep channel open for async response
+  }
+
   if (message.action === Action.DryRun) {
     handleDryRun(message.payload, sendResponse);
   } else if (message.action === Action.FullSync) {
@@ -240,6 +261,9 @@ async function logSyncComplete(payload: Partial<LastSync>, startTime?: number) {
 async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean = false) {
   const startTime = Date.now();
   await debugStorage.set({ logs: [] });
+
+  // Initialize file logger
+  initFileLogger();
 
   const appData = await appStorage.get();
   const year = yearString && yearString !== 'recent' ? parseInt(yearString) : undefined;
@@ -429,6 +453,20 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
 
 async function updateMonarchTransactions(startTime?: number) {
   logger.header('LIVE SYNC - Updating Monarch Transactions');
+
+  // Auto-cleanup: Remove processed transactions older than 30 days
+  const removed = await clearOldProcessedTransactions(30);
+  if (removed > 0) {
+    logger.info(`🧹 Cleaned ${removed} old cache entries (>30 days)`);
+  }
+
+  // Show cache stats
+  const cacheStats = await getCacheStats();
+  logger.info('💾 Transaction cache', {
+    cached: cacheStats.total,
+    oldestDays: cacheStats.oldest ? Math.floor((Date.now() - cacheStats.oldest) / (1000 * 60 * 60 * 24)) : 0,
+  });
+
   await progressStorage.patch({ phase: ProgressPhase.MonarchUpload, total: 0, complete: 0 });
 
   const transactions = await transactionStorage.get();
@@ -460,8 +498,27 @@ async function updateMonarchTransactions(startTime?: number) {
     matches: matches.length,
   });
 
+  // Find orders with multiple PDFs that didn't match
+  const matchedOrderIds = new Set(matches.map(m => m.amazon.id));
+  const unmatchedWithPdfs = transactions.orders.filter(
+    order => order.invoiceUrls && order.invoiceUrls.length > 1 && !matchedOrderIds.has(order.id),
+  );
+
+  if (unmatchedWithPdfs.length > 0) {
+    logger.warning(`⚠️ ${unmatchedWithPdfs.length} order(s) have multiple invoices but no matches`);
+    unmatchedWithPdfs.forEach(order => {
+      logger.warning(`   Order ${order.id}: ${order.items.length} items, ${order.invoiceUrls?.length} PDFs`);
+      console.log(`   💡 Check Monarch for transactions near: ${order.date}`);
+      console.log(`   📄 PDF Links:`);
+      order.invoiceUrls?.forEach((url, i) => {
+        console.log(`      ${i + 1}. ${url}`);
+      });
+    });
+  }
+
   let updated = 0;
   let skipped = 0;
+  let cachedSkips = 0;
 
   for (const data of matches) {
     // Build item list
@@ -482,7 +539,7 @@ async function updateMonarchTransactions(startTime?: number) {
     // Find the order to get invoice URLs
     const order = transactions.orders.find(o => o.transactions.some(t => t.id === data.amazon.id));
 
-    // Build complete note with items + invoice URLs
+    // Build complete note with items + tax breakdown + invoice URLs
     let fullNote = '';
 
     // Add refund indicator at the top if this is a refund
@@ -497,19 +554,37 @@ async function updateMonarchTransactions(startTime?: number) {
 
     fullNote += itemString;
 
+    // Add Quebec tax breakdown
+    const itemsTotal = data.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const taxes = calculateQuebecTaxes(itemsTotal, Math.abs(data.monarch.amount));
+    fullNote += formatTaxBreakdown(taxes);
+
     // Add invoice URLs if available
     if (order && order.invoiceUrls && order.invoiceUrls.length > 0) {
-      fullNote += '\n\n📄 Invoices:\n' + order.invoiceUrls.map((url, i) => `${i + 1}. ${url}`).join('\n');
+      fullNote += '\n\n📄 Invoice' + (order.invoiceUrls.length > 1 ? 's' : '') + ':\n';
+      fullNote += order.invoiceUrls.map((url, i) => `${i + 1}. ${url}`).join('\n');
 
-      logger.info(`Adding ${order.invoiceUrls.length} PDF invoice(s)`, {
+      // Add warning if multiple invoices
+      if (order.invoiceUrls.length > 1) {
+        fullNote += '\n\n⚠️ Multiple invoices - please verify total matches your transaction';
+      }
+
+      logger.info(`Adding ${order.invoiceUrls.length} invoice URL(s) + tax breakdown`, {
         orderId: order.id,
         monarchId: data.monarch.id,
+        taxType: taxes.type,
       });
-    } else {
-      logger.warning('No PDF invoices found for order', {
-        orderId: data.amazon.id,
-        monarchId: data.monarch.id,
-      });
+    }
+
+    // Check if this transaction was already processed (unless override mode is on)
+    if (!appData.options.overrideTransactions) {
+      const alreadyProcessed = await wasAlreadyProcessed(data.monarch.id, fullNote);
+      if (alreadyProcessed) {
+        logger.info(`💾 Transaction ${data.monarch.id} already processed (cached) - skipping`);
+        cachedSkips++;
+        skipped++;
+        continue;
+      }
     }
 
     if (data.monarch.notes === fullNote) {
@@ -522,6 +597,10 @@ async function updateMonarchTransactions(startTime?: number) {
     try {
       await updateMonarchTransaction(appData.monarchKey, data.monarch.id, fullNote);
       await debugLog('Updated transaction ' + data.monarch.id + ' with note ' + fullNote);
+
+      // Mark as processed in cache
+      await markAsProcessed(data.monarch.id, fullNote, data.amazon.id, data.monarch.amount);
+
       updated++;
 
       logger.success(`✓ Updated transaction ${updated}/${matches.length}`, {
@@ -550,14 +629,128 @@ async function updateMonarchTransactions(startTime?: number) {
     await new Promise(resolve => setTimeout(resolve, 500));
   }
 
+  const duration = `${((Date.now() - (startTime || Date.now())) / 1000).toFixed(2)}s`;
+
+  // Find unmatched Monarch transactions near split-invoice orders
+  const matchedMonarchIds = new Set(matches.map(m => m.monarch.id));
+  const unmatchedMonarch = transactions.transactions.filter(t => !matchedMonarchIds.has(t.id) && !t.notes);
+
+  logToFile('\n🔍 Looking for split-invoice helper opportunities:');
+  logToFile(`   Matched Monarch IDs: ${matchedMonarchIds.size}`);
+  logToFile(`   Unmatched Monarch (no notes): ${unmatchedMonarch.length}`);
+  console.log('\n🔍 Looking for split-invoice helper opportunities:');
+  console.log(`   Matched Monarch IDs: ${matchedMonarchIds.size}`);
+  console.log(`   Unmatched Monarch (no notes): ${unmatchedMonarch.length}`);
+  unmatchedMonarch.forEach(t => {
+    const line = `      $${t.amount} on ${t.date}`;
+    console.log(line);
+    logToFile(line);
+  });
+
+  // Find orders with multiple PDFs
+  const splitInvoiceOrders = transactions.orders.filter(o => o.invoiceUrls && o.invoiceUrls.length > 1);
+  logToFile(`   Orders with multiple PDFs: ${splitInvoiceOrders.length}`);
+  console.log(`   Orders with multiple PDFs: ${splitInvoiceOrders.length}`);
+  splitInvoiceOrders.forEach(o => {
+    const line = `      Order ${o.id}: ${o.invoiceUrls?.length} PDFs, date: ${o.date}`;
+    console.log(line);
+    logToFile(line);
+  });
+
+  // Try to add helper notes for likely matches
+  let helperNotesAdded = 0;
+  for (const order of splitInvoiceOrders) {
+    const orderDate = new Date(order.date).getTime();
+    if (isNaN(orderDate)) continue;
+
+    // Find Monarch transactions within ±7 days
+    const candidates = unmatchedMonarch.filter(t => {
+      const tDate = new Date(t.date).getTime();
+      if (isNaN(tDate)) return false;
+
+      const daysDiff = Math.abs(tDate - orderDate) / (1000 * 60 * 60 * 24);
+      const orderTotal = order.transactions[0]?.amount || 0;
+      const withinDateRange = daysDiff <= 7;
+      const amountMakesSense = Math.abs(t.amount) <= Math.abs(orderTotal) * 1.1;
+
+      const checkLine = `      Checking Monarch $${t.amount} (${t.date}): days=${daysDiff.toFixed(
+        1,
+      )}, amount ok=${amountMakesSense}, match=${withinDateRange && amountMakesSense}`;
+      console.log(checkLine);
+      logToFile(checkLine);
+
+      return withinDateRange && amountMakesSense;
+    });
+
+    const foundLine = `   Found ${candidates.length} candidate(s) for order ${order.id}`;
+    console.log(foundLine);
+    logToFile(foundLine);
+
+    // Add helper note to top 2 candidates (most likely matches)
+    const topCandidates = candidates.slice(0, 2);
+
+    for (const candidate of topCandidates) {
+      try {
+        const helperNote = `⚠️ POSSIBLE SPLIT INVOICE - VERIFY MANUALLY
+
+This may be part of Amazon order:
+Order #: ${order.id}
+Order Date: ${order.date}
+Order Total: $${Math.abs(order.transactions[0]?.amount || 0).toFixed(2)} (${order.items.length} items)
+
+Your transaction: $${Math.abs(candidate.amount).toFixed(2)} (${candidate.date})
+
+This order has ${order.invoiceUrls?.length} separate invoices.
+One likely matches your transaction amount.
+
+📄 Check Invoices:
+${order.invoiceUrls?.map((url, i) => `${i + 1}. ${url}`).join('\n')}
+
+💡 Open the PDFs to verify. If this matches:
+   • Note which invoice matches
+   • Enable "Override Transactions" in settings
+   • Run sync again to get full item details`;
+
+        await updateMonarchTransaction(appData.monarchKey, candidate.id, helperNote);
+        helperNotesAdded++;
+        logger.success(`Added helper note to transaction ${candidate.id}`, {
+          monarchAmount: candidate.amount,
+          amazonOrder: order.id,
+          pdfCount: order.invoiceUrls?.length,
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error) {
+        logger.error(`Failed to add helper note to ${candidate.id}`, error);
+      }
+    }
+  }
+
   logger.summary({
     'Amazon Orders': transactions.orders.length,
     'Monarch Transactions': transactions.transactions.length,
     'Matches Found': matches.length,
     Updated: updated,
-    Skipped: skipped,
-    Duration: `${((Date.now() - (startTime || Date.now())) / 1000).toFixed(2)}s`,
+    'Helper Notes Added': helperNotesAdded,
+    'Skipped (already correct)': skipped - cachedSkips,
+    'Skipped (cached)': cachedSkips,
+    Duration: duration,
   });
+
+  // Save final stats to file
+  logFinalStats({
+    amazonOrders: transactions.orders.length,
+    monarchTransactions: transactions.transactions.length,
+    matches: matches.length,
+    updated,
+    helperNotes: helperNotesAdded,
+    skipped: skipped - cachedSkips,
+    cached: cachedSkips,
+    duration,
+  });
+
+  // Don't auto-download - user will click button when ready
+  console.log(`\n✅ Sync complete! Click "Download Sync Trace" button to save detailed log.`);
 
   await logSyncComplete(
     {

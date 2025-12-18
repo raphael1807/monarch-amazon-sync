@@ -25,6 +25,7 @@
     "construct-style-sheets-polyfill": "3.1.0",
     "csv-stringify": "^6.4.5",
     "flowbite-react": "^0.7.2",
+    "pdfjs-dist": "3.11.174",
     "promise-parallel-throttle": "^3.3.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
