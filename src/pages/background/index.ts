@@ -18,6 +18,7 @@ import {
 } from '@root/src/shared/storages/processedTransactionsStorage';
 import { initFileLogger, saveLogFile, logFinalStats, logToFile } from '@root/src/shared/utils/fileLogger';
 import { calculateQuebecTaxes, formatTaxBreakdown } from '@root/src/shared/utils/taxCalculator';
+import { calculateDateRange } from '@root/src/shared/utils/dateRangeCalculator';
 
 reloadOnUpdate('pages/background');
 
@@ -266,6 +267,22 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
   initFileLogger();
 
   const appData = await appStorage.get();
+
+  // Use date range from options instead of year parameter
+  const rangeType = appData.options.dateRangeType || '3months';
+  const { startDate, endDate } = calculateDateRange(
+    rangeType,
+    appData.options.customStartDate,
+    appData.options.customEndDate,
+  );
+
+  logger.info('📅 Date range selected', {
+    type: rangeType,
+    start: startDate.toLocaleDateString(),
+    end: endDate.toLocaleDateString(),
+  });
+
+  // Legacy: still support year parameter if provided
   const year = yearString && yearString !== 'recent' ? parseInt(yearString) : undefined;
 
   logger.step('Checking Monarch authentication', { hasKey: !!appData.monarchKey });
@@ -313,18 +330,7 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
 
   await progressStorage.patch({ phase: ProgressPhase.MonarchDownload, total: 1, complete: 0 });
 
-  let startDate: Date;
-  let endDate: Date;
-  if (year) {
-    startDate = new Date(year - 1, 11, 23);
-    endDate = new Date(year + 1, 0, 8);
-  } else {
-    startDate = new Date();
-    startDate.setMonth(startDate.getMonth() - 3);
-    startDate.setDate(startDate.getDate() - 8);
-    endDate = new Date();
-    endDate.setDate(startDate.getDate() + 8);
-  }
+  // startDate and endDate already calculated above from date range selector
 
   logger.step('Fetching Monarch transactions', {
     merchant: appData.options.amazonMerchant,
