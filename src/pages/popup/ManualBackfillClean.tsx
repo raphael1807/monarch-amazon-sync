@@ -81,16 +81,43 @@ export function ManualBackfillClean() {
         }}
       />
 
-      {/* Dry Run Toggle - More Prominent */}
+      {/* Override Toggle */}
+      <div
+        className={`border-2 rounded-lg p-4 ${
+          appData.options?.overrideTransactions ? 'bg-orange-50 border-orange-400' : 'bg-gray-50 border-gray-300'
+        }`}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-bold text-gray-900">♻️ Override Already-Synced Transactions</span>
+          <ToggleSwitch
+            checked={appData.options?.overrideTransactions || false}
+            onChange={checked => {
+              appData.options &&
+                appStorage.patch({
+                  options: { ...appData.options, overrideTransactions: checked },
+                });
+            }}
+          />
+        </div>
+        <p
+          className={`text-xs font-medium ${
+            appData.options?.overrideTransactions ? 'text-orange-800' : 'text-gray-600'
+          }`}>
+          {appData.options?.overrideTransactions
+            ? '✓ Will update ALL transactions (even with existing notes)'
+            : '○ Will only update empty transactions (skip existing notes)'}
+        </p>
+        <p className="text-xs text-gray-500 mt-2">💡 Enable this to refresh transactions that were already synced</p>
+      </div>
+
+      {/* Dry Run Toggle */}
       <div className={`border-2 rounded-lg p-4 ${dryRun ? 'bg-blue-50 border-blue-400' : 'bg-red-50 border-red-400'}`}>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-bold text-gray-900">Safe Mode (Dry-Run)</span>
+          <span className="text-sm font-bold text-gray-900">🔍 Safe Mode (Preview)</span>
           <ToggleSwitch checked={dryRun} onChange={handleToggle} />
         </div>
         <p className={`text-xs font-medium ${dryRun ? 'text-blue-800' : 'text-red-800'}`}>
           {dryRun ? '✓ Preview only - No Monarch changes' : '⚠️ LIVE MODE - Will update Monarch!'}
         </p>
-        <p className="text-xs text-gray-600 mt-1">Current: {dryRun ? 'Safe Mode ON' : 'LIVE MODE ON'}</p>
       </div>
 
       {/* Run Button */}
