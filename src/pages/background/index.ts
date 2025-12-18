@@ -316,6 +316,7 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
     end: endDate.toISOString().split('T')[0],
     customStart: appData.options.customStartDate,
     customEnd: appData.options.customEndDate,
+    overrideToggle: appData.options.overrideTransactions,
     overrideMode: shouldOverride,
   };
 
@@ -324,10 +325,16 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
   logToFile(`   Type: ${rangeType}`);
   logToFile(`   Start: ${startDate.toISOString().split('T')[0]}`);
   logToFile(`   End: ${endDate.toISOString().split('T')[0]}`);
+  logToFile(`   Override Toggle: ${appData.options.overrideTransactions ? 'ON' : 'OFF'}`);
+  logToFile(`   Override Mode: ${shouldOverride ? 'ENABLED' : 'DISABLED'}`);
+  if (shouldOverride) {
+    logToFile(`   → Will update ALL transactions (ignoring existing notes)`);
+  } else {
+    logToFile(`   → Will only update empty transactions (skipping existing notes)`);
+  }
   if (rangeType === 'custom') {
     logToFile(`   Custom Start Input: ${appData.options.customStartDate || 'not set'}`);
     logToFile(`   Custom End Input: ${appData.options.customEndDate || 'not set'}`);
-    logToFile(`   Override Mode: ENABLED (auto for custom ranges)`);
   }
 
   // Legacy: still support year parameter if provided
