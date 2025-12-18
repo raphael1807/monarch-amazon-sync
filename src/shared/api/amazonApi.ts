@@ -92,6 +92,37 @@ export async function fetchOrders(year: number | undefined, startDate?: Date, en
   const yearsToFetch: number[] = [];
 
   if (startDate && endDate) {
+    // Calculate range span in days
+    const rangeSpanDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+
+    // Optimization: If range is < 3 months, just use default Amazon fetch (faster)
+    if (rangeSpanDays < 90) {
+      logger.info('📅 Range < 3 months - using default Amazon fetch', {
+        days: Math.round(rangeSpanDays),
+        start: startDate.toISOString().split('T')[0],
+        end: endDate.toISOString().split('T')[0],
+      });
+
+      const allOrders = await fetchOrdersForYear(undefined); // Default: Last 3 months
+
+      // Filter to exact range
+      const startTime = startDate.getTime();
+      const endTime = endDate.getTime();
+      const filtered = allOrders.filter(order => {
+        const orderDate = new Date(order.date).getTime();
+        if (isNaN(orderDate)) return true;
+        return orderDate >= startTime && orderDate <= endTime;
+      });
+
+      logger.info('📅 Filtered to custom range', {
+        before: allOrders.length,
+        after: filtered.length,
+      });
+
+      return filtered;
+    }
+
+    // Range >= 3 months - fetch specific year(s)
     const startYear = startDate.getFullYear();
     const endYear = endDate.getFullYear();
 
@@ -100,7 +131,7 @@ export async function fetchOrders(year: number | undefined, startDate?: Date, en
       yearsToFetch.push(y);
     }
 
-    logger.info('📅 Fetching Amazon orders for date range', {
+    logger.info('📅 Fetching Amazon orders for date range (multi-year)', {
       start: startDate.toISOString().split('T')[0],
       end: endDate.toISOString().split('T')[0],
       years: yearsToFetch,

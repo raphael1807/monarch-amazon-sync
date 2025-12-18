@@ -765,8 +765,9 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
             const withBoth = price + gst + qst;
 
             return `   ${i + 1}. ${item.title}
-      Base: $${price.toFixed(2)}
-      + GST: $${withGST.toFixed(2)} | + GST+QST: $${withBoth.toFixed(2)}`;
+      Price: $${price.toFixed(2)}
+      w/ GST (5%): $${withGST.toFixed(2)}
+      w/ GST+QST (15%): $${withBoth.toFixed(2)}`;
           })
           .join('\n\n');
 
