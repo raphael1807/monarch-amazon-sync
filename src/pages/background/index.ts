@@ -324,9 +324,12 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
   let orders: Order[];
   try {
     orders = await timeOperation('Fetch Amazon Orders', async () => {
-      logger.step('Fetching Amazon orders', { year: year || 'Current' });
+      logger.step('Fetching Amazon orders', {
+        dateRange: `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`,
+      });
       await debugLog('Fetching Amazon orders');
-      return await fetchOrders(year);
+      // Pass date range to fetchOrders for filtering
+      return await fetchOrders(year, startDate, endDate);
     });
 
     logger.success('Amazon orders fetched', { count: orders.length });

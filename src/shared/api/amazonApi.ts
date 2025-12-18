@@ -87,13 +87,72 @@ export async function checkAmazonAuth(): Promise<AmazonInfo> {
   }
 }
 
-export async function fetchOrders(year: number | undefined): Promise<Order[]> {
+export async function fetchOrders(year: number | undefined, startDate?: Date, endDate?: Date): Promise<Order[]> {
+  // Determine which years to fetch based on date range
+  const yearsToFetch: number[] = [];
+
+  if (startDate && endDate) {
+    const startYear = startDate.getFullYear();
+    const endYear = endDate.getFullYear();
+
+    // Fetch all years in the range
+    for (let y = startYear; y <= endYear; y++) {
+      yearsToFetch.push(y);
+    }
+
+    logger.info('📅 Fetching Amazon orders for date range', {
+      start: startDate.toISOString().split('T')[0],
+      end: endDate.toISOString().split('T')[0],
+      years: yearsToFetch,
+    });
+  } else if (year) {
+    yearsToFetch.push(year);
+  }
+
+  let allOrders: Order[] = [];
+
+  // Fetch orders for each year
+  if (yearsToFetch.length > 0) {
+    for (const y of yearsToFetch) {
+      const yearOrders = await fetchOrdersForYear(y);
+      allOrders = allOrders.concat(yearOrders);
+      logger.info(`Fetched year ${y}: ${yearOrders.length} orders`);
+    }
+  } else {
+    // No specific year - use default (Last 3 months)
+    allOrders = await fetchOrdersForYear(undefined);
+  }
+
+  // Filter orders to date range if specified
+  if (startDate && endDate) {
+    const startTime = startDate.getTime();
+    const endTime = endDate.getTime();
+
+    const beforeFilter = allOrders.length;
+    allOrders = allOrders.filter(order => {
+      const orderDate = new Date(order.date).getTime();
+      if (isNaN(orderDate)) return true; // Keep if can't parse date
+
+      return orderDate >= startTime && orderDate <= endTime;
+    });
+
+    logger.info('📅 Filtered orders to date range', {
+      before: beforeFilter,
+      after: allOrders.length,
+      removed: beforeFilter - allOrders.length,
+    });
+  }
+
+  return allOrders;
+}
+
+async function fetchOrdersForYear(year: number | undefined): Promise<Order[]> {
   let url = ORDER_PAGES_URL;
   if (year) {
     url += `&timeFilter=year-${year}`;
   }
 
-  logger.step('Fetching orders from Amazon.ca', { year: year || 'Current', url });
+  logger.step('Fetching orders from Amazon.ca', { year: year || 'Last 3 months', url });
   await debugLog('Fetching orders from ' + url);
   const res = await fetch(url);
   await debugLog('Got orders response ' + res.status);
