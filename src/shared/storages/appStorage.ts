@@ -51,6 +51,10 @@ export type LastSync = {
   transactionsUpdated: number;
   failureReason?: FailureReason | undefined;
   dryRun?: boolean;
+  updated?: number;
+  skipped?: number;
+  cached?: number;
+  helperNotesAdded?: number;
 };
 
 export type DateRangeOption = '7days' | '30days' | '3months' | '6months' | 'thisYear' | 'lastYear' | 'custom';
