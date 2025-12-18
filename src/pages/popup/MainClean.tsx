@@ -93,8 +93,12 @@ const MainClean = () => {
 
   const forceSync = useCallback(async () => {
     if (!ready) return;
+    // Home tab sync: Always use override to ensure updates happen
+    await appStorage.patch({
+      options: { ...appData.options, overrideTransactions: true },
+    });
     await chrome.runtime.sendMessage({ action: Action.FullSync });
-  }, [ready]);
+  }, [ready, appData.options]);
 
   const amazonConnected = appData.amazonStatus === AuthStatus.Success;
   const monarchConnected = appData.monarchStatus === AuthStatus.Success;
