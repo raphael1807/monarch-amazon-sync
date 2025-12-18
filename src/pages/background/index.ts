@@ -228,6 +228,15 @@ async function logSyncComplete(
 
   await appStorage.patch({ lastSync: syncData });
 
+  // Get current date range settings for history
+  const currentAppData = await appStorage.get();
+  const currentRangeType = currentAppData.options.dateRangeType || '3months';
+  const { startDate: historyStart, endDate: historyEnd } = calculateDateRange(
+    currentRangeType,
+    currentAppData.options.customStartDate,
+    currentAppData.options.customEndDate,
+  );
+
   // Add to sync history
   await addSyncRecord({
     success: syncData.success,
@@ -237,6 +246,19 @@ async function logSyncComplete(
     matchesFound: syncData.transactionsUpdated,
     duration: startTime ? Date.now() - startTime : undefined,
     failureReason: syncData.failureReason,
+    rangeType: currentRangeType,
+    startDate: historyStart.toISOString().split('T')[0],
+    endDate: historyEnd.toISOString().split('T')[0],
+    updated: payload.updated || 0,
+    skipped: payload.skipped || 0,
+    cached: payload.cached || 0,
+    helperNotesAdded: payload.helperNotesAdded || 0,
+  });
+
+  console.log('📜 Saved to history:', {
+    rangeType: currentRangeType,
+    start: historyStart.toISOString().split('T')[0],
+    end: historyEnd.toISOString().split('T')[0],
   });
 
   // Send browser notification (using data URL for icon to avoid download error)
