@@ -15,6 +15,11 @@ export function calculateDateRange(
       startDate.setDate(startDate.getDate() - 7);
       break;
 
+    case '14days':
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - 14);
+      break;
+
     case '30days':
       startDate = new Date();
       startDate.setDate(startDate.getDate() - 30);

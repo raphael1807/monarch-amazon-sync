@@ -25,7 +25,8 @@ export function DateRangeSelector({ selectedRange, customStart, customEnd, onCha
 
   const getEstimate = (range: DateRangeOption): string => {
     const estimates: Record<DateRangeOption, string> = {
-      '7days': '~2-5 orders',
+      '7days': '~1-3 orders',
+      '14days': '~3-7 orders',
       '30days': '~5-15 orders',
       '3months': '~15-30 orders',
       '6months': '~30-50 orders',
@@ -56,6 +57,21 @@ export function DateRangeSelector({ selectedRange, customStart, customEnd, onCha
           </label>
         </div>
 
+        {/* 14 days */}
+        <div className="flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors border-blue-200 bg-blue-50">
+          <Radio
+            id="range-14days"
+            name="dateRange"
+            value="14days"
+            checked={selectedRange === '14days'}
+            onChange={() => handleRangeChange('14days')}
+          />
+          <label htmlFor="range-14days" className="text-sm cursor-pointer flex-1">
+            <div className="font-medium">Last 14 days ⭐</div>
+            <div className="text-xs text-gray-500">{getEstimate('14days')}</div>
+          </label>
+        </div>
+
         {/* 30 days */}
         <div className="flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors border-gray-200 hover:border-blue-300">
           <Radio
@@ -72,7 +88,7 @@ export function DateRangeSelector({ selectedRange, customStart, customEnd, onCha
         </div>
 
         {/* 3 months */}
-        <div className="flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors border-blue-200 bg-blue-50">
+        <div className="flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors border-gray-200 hover:border-blue-300">
           <Radio
             id="range-3months"
             name="dateRange"
@@ -81,7 +97,7 @@ export function DateRangeSelector({ selectedRange, customStart, customEnd, onCha
             onChange={() => handleRangeChange('3months')}
           />
           <label htmlFor="range-3months" className="text-sm cursor-pointer flex-1">
-            <div className="font-medium">Last 3 months ⭐</div>
+            <div className="font-medium">Last 3 months</div>
             <div className="text-xs text-gray-500">{getEstimate('3months')}</div>
           </label>
         </div>

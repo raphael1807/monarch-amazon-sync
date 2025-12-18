@@ -57,7 +57,15 @@ export type LastSync = {
   helperNotesAdded?: number;
 };
 
-export type DateRangeOption = '7days' | '30days' | '3months' | '6months' | 'thisYear' | 'lastYear' | 'custom';
+export type DateRangeOption =
+  | '7days'
+  | '14days'
+  | '30days'
+  | '3months'
+  | '6months'
+  | 'thisYear'
+  | 'lastYear'
+  | 'custom';
 
 type Options = {
   overrideTransactions: boolean;
@@ -102,7 +110,7 @@ const appStorage = createStorage<State>(
       matchTolerance: 1,
       dateTolerance: 7,
       notifications: true,
-      dateRangeType: '3months', // Default to 3 months
+      dateRangeType: '14days', // Default to 14 days (fast, focused)
     },
   },
   {
