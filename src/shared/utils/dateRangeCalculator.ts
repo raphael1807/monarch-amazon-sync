@@ -26,6 +26,12 @@ export function calculateDateRange(
       startDate.setDate(startDate.getDate() - 8); // Extra buffer
       break;
 
+    case '6months':
+      startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - 6);
+      startDate.setDate(startDate.getDate() - 8); // Extra buffer
+      break;
+
     case 'thisYear':
       startDate = new Date(now.getFullYear(), 0, 1); // Jan 1
       endDate = new Date(now.getFullYear(), 11, 31); // Dec 31

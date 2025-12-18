@@ -53,7 +53,7 @@ export type LastSync = {
   dryRun?: boolean;
 };
 
-export type DateRangeOption = '7days' | '30days' | '3months' | 'thisYear' | 'lastYear' | 'custom';
+export type DateRangeOption = '7days' | '30days' | '3months' | '6months' | 'thisYear' | 'lastYear' | 'custom';
 
 type Options = {
   overrideTransactions: boolean;

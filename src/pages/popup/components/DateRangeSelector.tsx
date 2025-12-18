@@ -28,6 +28,7 @@ export function DateRangeSelector({ selectedRange, customStart, customEnd, onCha
       '7days': '~2-5 orders',
       '30days': '~5-15 orders',
       '3months': '~15-30 orders',
+      '6months': '~30-50 orders',
       thisYear: '~50-100 orders',
       lastYear: '~50-100 orders',
       custom: 'Varies',
@@ -82,6 +83,21 @@ export function DateRangeSelector({ selectedRange, customStart, customEnd, onCha
           <label htmlFor="range-3months" className="text-sm cursor-pointer flex-1">
             <div className="font-medium">Last 3 months ⭐</div>
             <div className="text-xs text-gray-500">{getEstimate('3months')}</div>
+          </label>
+        </div>
+
+        {/* 6 months */}
+        <div className="flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors border-gray-200 hover:border-blue-300">
+          <Radio
+            id="range-6months"
+            name="dateRange"
+            value="6months"
+            checked={selectedRange === '6months'}
+            onChange={() => handleRangeChange('6months')}
+          />
+          <label htmlFor="range-6months" className="text-sm cursor-pointer flex-1">
+            <div className="font-medium">Last 6 months</div>
+            <div className="text-xs text-gray-500">{getEstimate('6months')}</div>
           </label>
         </div>
 

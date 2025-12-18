@@ -276,11 +276,24 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
     appData.options.customEndDate,
   );
 
-  logger.info('📅 Date range selected', {
+  // Log to both console and trace file
+  const dateRangeInfo = {
     type: rangeType,
-    start: startDate.toLocaleDateString(),
-    end: endDate.toLocaleDateString(),
-  });
+    start: startDate.toISOString().split('T')[0],
+    end: endDate.toISOString().split('T')[0],
+    customStart: appData.options.customStartDate,
+    customEnd: appData.options.customEndDate,
+  };
+
+  logger.info('📅 Date range selected', dateRangeInfo);
+  logToFile(`\n📅 DATE RANGE SELECTION:`);
+  logToFile(`   Type: ${rangeType}`);
+  logToFile(`   Start: ${startDate.toISOString().split('T')[0]}`);
+  logToFile(`   End: ${endDate.toISOString().split('T')[0]}`);
+  if (rangeType === 'custom') {
+    logToFile(`   Custom Start Input: ${appData.options.customStartDate || 'not set'}`);
+    logToFile(`   Custom End Input: ${appData.options.customEndDate || 'not set'}`);
+  }
 
   // Legacy: still support year parameter if provided
   const year = yearString && yearString !== 'recent' ? parseInt(yearString) : undefined;

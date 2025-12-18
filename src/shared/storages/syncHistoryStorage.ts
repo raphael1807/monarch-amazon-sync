@@ -86,6 +86,7 @@ export function formatDateRange(entry: SyncRecord): string {
     '7days': 'Last 7 days',
     '30days': 'Last 30 days',
     '3months': 'Last 3 months',
+    '6months': 'Last 6 months',
     thisYear: 'This year',
     lastYear: 'Last year',
     custom: 'Custom',
