@@ -2,6 +2,7 @@ import useStorage from '@root/src/shared/hooks/useStorage';
 import OptionsClean from './OptionsClean';
 import MainClean from './MainClean';
 import ManualBackfillClean from './ManualBackfillClean';
+import SyncHistoryTab from './components/SyncHistoryTab';
 import appStorage, { Page } from '@root/src/shared/storages/appStorage';
 
 const Popup = () => {
@@ -12,6 +13,8 @@ const Popup = () => {
     page = <OptionsClean />;
   } else if (storage.page === Page.ManualBackfill) {
     page = <ManualBackfillClean />;
+  } else if (storage.page === Page.History) {
+    page = <SyncHistoryTab />;
   } else {
     page = <MainClean />;
   }
@@ -34,6 +37,9 @@ const Popup = () => {
             active={storage.page === Page.ManualBackfill}
             onClick={() => appStorage.patch({ page: Page.ManualBackfill })}>
             🔄 Sync
+          </TabButton>
+          <TabButton active={storage.page === Page.History} onClick={() => appStorage.patch({ page: Page.History })}>
+            📜 History
           </TabButton>
           <TabButton active={storage.page === Page.Options} onClick={() => appStorage.patch({ page: Page.Options })}>
             ⚙️ Settings

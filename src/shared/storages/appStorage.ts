@@ -4,6 +4,7 @@ export enum Page {
   Default = 'default',
   Options = 'options',
   ManualBackfill = 'manualBackfill',
+  History = 'history',
 }
 
 export enum AuthStatus {
