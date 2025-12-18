@@ -3,17 +3,15 @@ import appStorage, { AuthStatus, Page } from '@root/src/shared/storages/appStora
 import progressStorage, { ProgressPhase } from '@root/src/shared/storages/progressStorage';
 import { Button, ToggleSwitch } from 'flowbite-react';
 import { useCallback, useMemo, useState } from 'react';
-import YearSelector from './components/YearSelector';
+import DateRangeSelector from './components/DateRangeSelector';
 import { Action } from '@root/src/shared/types';
 import { FaPlay, FaExclamationTriangle } from 'react-icons/fa';
+import type { DateRangeOption } from '@root/src/shared/storages/appStorage';
 
 export function ManualBackfillClean() {
   const appData = useStorage(appStorage);
   const progress = useStorage(progressStorage);
 
-  // Initialize with current year
-  const currentYear = new Date().getFullYear().toString();
-  const [year, setYear] = useState<string>(currentYear);
   const [dryRun, setDryRun] = useState<boolean>(true);
 
   const handleToggle = useCallback(
@@ -24,11 +22,6 @@ export function ManualBackfillClean() {
     [dryRun],
   );
 
-  const handleYearChange = (selectedYear: string) => {
-    console.log('📅 Year state updated:', selectedYear || 'Last 3 Months');
-    setYear(selectedYear || '');
-  };
-
   const actionOngoing = useMemo(
     () => progress.phase !== ProgressPhase.Complete && progress.phase !== ProgressPhase.Idle,
     [progress],
@@ -38,16 +31,16 @@ export function ManualBackfillClean() {
     appData.amazonStatus === AuthStatus.Success && appData.monarchStatus === AuthStatus.Success && !actionOngoing;
 
   const runBackfill = useCallback(async () => {
-    if (!ready || !year) return;
+    if (!ready) return;
 
-    console.log('Starting backfill:', { year, dryRun });
+    console.log('Starting sync:', { range: appData.options?.dateRangeType, dryRun });
     await appStorage.patch({ page: Page.Default });
     await chrome.runtime.sendMessage({
       action: dryRun ? Action.DryRun : Action.FullSync,
-      payload: { year: year },
+      payload: {}, // Date range is now in options
     });
-    console.log('Backfill message sent');
-  }, [ready, dryRun, year]);
+    console.log('Sync message sent');
+  }, [ready, dryRun, appData.options]);
 
   const amazonConnected = appData.amazonStatus === AuthStatus.Success;
   const monarchConnected = appData.monarchStatus === AuthStatus.Success;
@@ -70,11 +63,23 @@ export function ManualBackfillClean() {
         </div>
       )}
 
-      {/* Year Selector */}
-      <div className="space-y-2">
-        <div className="text-sm font-medium text-gray-700">Select Year</div>
-        <YearSelector oldestYear={appData.oldestAmazonYear} onSelect={handleYearChange} />
-      </div>
+      {/* Date Range Selector */}
+      <DateRangeSelector
+        selectedRange={appData.options?.dateRangeType || '3months'}
+        customStart={appData.options?.customStartDate}
+        customEnd={appData.options?.customEndDate}
+        onChange={(range: DateRangeOption, start?: string, end?: string) => {
+          appData.options &&
+            appStorage.patch({
+              options: {
+                ...appData.options,
+                dateRangeType: range,
+                customStartDate: start,
+                customEndDate: end,
+              },
+            });
+        }}
+      />
 
       {/* Dry Run Toggle - More Prominent */}
       <div className={`border-2 rounded-lg p-4 ${dryRun ? 'bg-blue-50 border-blue-400' : 'bg-red-50 border-red-400'}`}>
@@ -89,12 +94,7 @@ export function ManualBackfillClean() {
       </div>
 
       {/* Run Button */}
-      <Button
-        size="lg"
-        color="success"
-        className="w-full font-semibold"
-        disabled={!ready || !year}
-        onClick={runBackfill}>
+      <Button size="lg" color="success" className="w-full font-semibold" disabled={!ready} onClick={runBackfill}>
         <FaPlay className="mr-2" />
         {dryRun ? 'Preview Matches' : 'Sync Now'}
       </Button>

@@ -136,7 +136,17 @@ function SyncHistoryEntry({
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs">{isExpanded ? <FaChevronDown /> : <FaChevronRight />}</span>
               <span className="font-semibold text-sm">
-                {statusIcon} {new Date(entry.timestamp).toLocaleString()}
+                {statusIcon}{' '}
+                {new Date(entry.timestamp).toLocaleDateString('en-US', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: '2-digit',
+                })}{' '}
+                {new Date(entry.timestamp).toLocaleTimeString('en-US', {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                  hour12: true,
+                })}
               </span>
             </div>
             <div className="text-xs text-gray-600 space-y-0.5">
