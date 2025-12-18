@@ -600,11 +600,16 @@ function extractPdfLinks(popoverHtml: string): string[] {
 
   // Find all links ending in invoice.pdf or documents/download
   $('a[href*="invoice.pdf"], a[href*="documents/download"]').each((_, el) => {
-    const href = $(el).attr('href');
+    let href = $(el).attr('href');
     if (href) {
+      // Fix URL: Add /-/fr/ language prefix if missing (for French Amazon.ca)
+      if (href.startsWith('/documents/download') && !href.startsWith('/-/fr/')) {
+        href = '/-/fr' + href;
+      }
+
       const absoluteUrl = href.startsWith('http') ? href : AMAZON_BASE_URL + href;
       pdfLinks.push(absoluteUrl);
-      console.log(`  📎 Found PDF: ${absoluteUrl.substring(absoluteUrl.length - 50)}`);
+      console.log(`  📎 Found PDF: ${absoluteUrl.substring(absoluteUrl.length - 60)}`);
     }
   });
 
