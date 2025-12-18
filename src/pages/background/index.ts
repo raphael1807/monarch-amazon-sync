@@ -204,7 +204,15 @@ async function handleFullSync(payload: Payload | undefined, sendResponse: (args:
   sendResponse({ success: false });
 }
 
-async function logSyncComplete(payload: Partial<LastSync>, startTime?: number) {
+async function logSyncComplete(
+  payload: Partial<LastSync> & {
+    updated?: number;
+    skipped?: number;
+    cached?: number;
+    helperNotesAdded?: number;
+  },
+  startTime?: number,
+) {
   await debugLog('Sync complete');
   await progressStorage.patch({ phase: ProgressPhase.Complete });
 
@@ -783,6 +791,10 @@ ${order.invoiceUrls?.map((url, i) => `${i + 1}. ${url}`).join('\n')}
       amazonOrders: transactions.orders.length,
       monarchTransactions: transactions.transactions.length,
       transactionsUpdated: matches.length,
+      updated,
+      skipped: skipped - cachedSkips,
+      cached: cachedSkips,
+      helperNotesAdded,
     },
     startTime,
   );
