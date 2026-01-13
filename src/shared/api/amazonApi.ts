@@ -572,11 +572,19 @@ async function fetchOrderDataFromInvoice(orderId: string): Promise<Order> {
     console.log(''); // Extra line for readability
   }
 
+  // Always include at least a fallback invoice URL
+  // If no PDF links found, provide the print invoice page URL
+  if (invoiceUrls.length === 0) {
+    const fallbackUrl = `${AMAZON_BASE_URL}/gp/css/summary/print.html?orderID=${orderId}`;
+    invoiceUrls.push(fallbackUrl);
+    logger.info(`Using fallback invoice URL for order ${orderId}`);
+  }
+
   return {
     ...order,
     transactions,
     items,
-    invoiceUrls: invoiceUrls.length > 0 ? invoiceUrls : undefined,
+    invoiceUrls,
   };
 }
 
