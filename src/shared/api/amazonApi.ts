@@ -602,10 +602,9 @@ function extractPdfLinks(popoverHtml: string): string[] {
   $('a[href*="invoice.pdf"], a[href*="documents/download"]').each((_, el) => {
     let href = $(el).attr('href');
     if (href) {
-      // Fix URL: Add /-/fr/ language prefix if missing (for French Amazon.ca)
-      if (href.startsWith('/documents/download') && !href.startsWith('/-/fr/')) {
-        href = '/-/fr' + href;
-      }
+      // Remove any language prefix (e.g., /-/fr/) from the URL path if present
+      // Invoice URLs work without the language prefix: /documents/download/...
+      href = href.replace(/^\/-\/[a-z]{2}\//, '/');
 
       const absoluteUrl = href.startsWith('http') ? href : AMAZON_BASE_URL + href;
       pdfLinks.push(absoluteUrl);
