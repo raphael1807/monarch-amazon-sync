@@ -362,6 +362,9 @@ async function downloadAndStoreTransactions(yearString?: string, dryRun: boolean
     });
 
     logger.success('Amazon orders fetched', { count: orders.length });
+
+    // Update Amazon status to Success since we successfully fetched orders
+    await appStorage.patch({ amazonStatus: AuthStatus.Success, lastAmazonAuth: Date.now() });
   } catch (e) {
     await debugLog(e);
     logger.error('Failed to fetch Amazon orders', e);
