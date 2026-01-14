@@ -616,21 +616,32 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
     // Build complete note with items + tax breakdown + invoice URLs
     let fullNote = '';
 
-    // Add refund indicator at the top if this is a refund
-    if (data.amazon.refund) {
-      fullNote = '🔄 REFUND - Same items as original order\n\n';
+    // Calculate tax info first to determine status
+    const itemsTotal = data.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const taxes = calculateQuebecTaxes(itemsTotal, Math.abs(data.monarch.amount));
+
+    // Determine if verification is needed
+    // Only flag if there's an actual price discrepancy (> $0.50 difference)
+    const hasPriceDiscrepancy = taxes.type === 'Unknown' || Math.abs(taxes.difference) > 0.5;
+    const isRefund = data.amazon.refund;
+
+    // Add status header at the top
+    if (isRefund) {
+      fullNote = '🔄 REFUND\n\n';
       logger.info('Processing refund transaction', {
         monarchId: data.monarch.id,
         amount: data.amazon.amount,
         originalOrderId: data.amazon.id,
       });
+    } else if (hasPriceDiscrepancy) {
+      fullNote = '⚠️ VERIFY - Price discrepancy\n\n';
+    } else {
+      fullNote = '✅ VERIFIED\n\n';
     }
 
     fullNote += itemString;
 
     // Add Quebec tax breakdown
-    const itemsTotal = data.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const taxes = calculateQuebecTaxes(itemsTotal, Math.abs(data.monarch.amount));
     fullNote += formatTaxBreakdown(taxes);
 
     // Add invoice URLs if available
@@ -638,9 +649,9 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
       fullNote += '\n\n📄 Invoice' + (order.invoiceUrls.length > 1 ? 's' : '') + ':\n';
       fullNote += order.invoiceUrls.map((url, i) => `${i + 1}. ${url}`).join('\n');
 
-      // Add warning if multiple invoices
+      // Add note if multiple invoices
       if (order.invoiceUrls.length > 1) {
-        fullNote += '\n\n⚠️ Multiple invoices - please verify total matches your transaction';
+        fullNote += '\n\n💡 Multiple invoices may indicate split shipments';
       }
 
       logger.info(`Adding ${order.invoiceUrls.length} invoice URL(s) + tax breakdown`, {
