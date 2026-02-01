@@ -77,6 +77,7 @@ type Options = {
   dateRangeType?: DateRangeOption; // Last used date range selection
   customStartDate?: string; // ISO format
   customEndDate?: string; // ISO format
+  dryRunMode?: boolean; // Preview mode - no changes to Monarch (default: true)
 };
 
 type State = {
@@ -111,6 +112,7 @@ const appStorage = createStorage<State>(
       dateTolerance: 7,
       notifications: true,
       dateRangeType: '14days', // Default to 14 days (fast, focused)
+      dryRunMode: true, // Default to preview mode for safety
     },
   },
   {

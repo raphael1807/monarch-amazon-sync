@@ -111,7 +111,32 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
           func: () => localStorage['persist:root'],
         });
         try {
-          const key = JSON.parse(JSON.parse(result[0].result).user).token;
+          const rawResult = result[0]?.result;
+
+          // Validate that we got a proper localStorage value (should be a JSON string)
+          if (!rawResult || typeof rawResult !== 'string') {
+            await debugLog('Monarch auth failed: No localStorage data found');
+            await appStorage.patch({ monarchStatus: AuthStatus.NotLoggedIn });
+            return;
+          }
+
+          // Check if the result looks like HTML (wrong page)
+          if (rawResult.startsWith('<!DOCTYPE') || rawResult.startsWith('<html') || rawResult.startsWith('<')) {
+            await debugLog('Monarch auth failed: Not on Monarch Money page');
+            await appStorage.patch({ monarchStatus: AuthStatus.NotLoggedIn });
+            return;
+          }
+
+          const parsedRoot = JSON.parse(rawResult);
+          if (!parsedRoot?.user) {
+            await debugLog('Monarch auth failed: No user data in localStorage');
+            await appStorage.patch({ monarchStatus: AuthStatus.NotLoggedIn });
+            return;
+          }
+
+          const parsedUser = JSON.parse(parsedRoot.user);
+          const key = parsedUser?.token;
+
           if (key) {
             await debugLog('Monarch auth success');
             await appStorage.patch({ monarchKey: key, lastMonarchAuth: Date.now(), monarchStatus: AuthStatus.Success });

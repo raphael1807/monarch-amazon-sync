@@ -81,13 +81,17 @@ export function ManualBackfillClean() {
         }}
       />
 
-      {/* Override Toggle */}
-      <div
-        className={`border-2 rounded-lg p-4 ${
-          appData.options?.overrideTransactions ? 'bg-orange-50 border-orange-400' : 'bg-gray-50 border-gray-300'
-        }`}>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-bold text-gray-900">♻️ Override Already-Synced Transactions</span>
+      {/* Sync Options */}
+      <div className="space-y-3">
+        {/* Override Toggle */}
+        <div className="flex items-center justify-between py-3 px-4 bg-white border border-gray-200 rounded-xl hover:border-gray-300 transition-colors">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-base">♻️</div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">Re-sync existing</p>
+              <p className="text-xs text-gray-500">Update transactions with notes</p>
+            </div>
+          </div>
           <ToggleSwitch
             checked={appData.options?.overrideTransactions || false}
             onChange={checked => {
@@ -98,26 +102,28 @@ export function ManualBackfillClean() {
             }}
           />
         </div>
-        <p
-          className={`text-xs font-medium ${
-            appData.options?.overrideTransactions ? 'text-orange-800' : 'text-gray-600'
-          }`}>
-          {appData.options?.overrideTransactions
-            ? '✓ Will update ALL transactions (even with existing notes)'
-            : '○ Will only update empty transactions (skip existing notes)'}
-        </p>
-        <p className="text-xs text-gray-500 mt-2">💡 Enable this to refresh transactions that were already synced</p>
-      </div>
 
-      {/* Dry Run Toggle */}
-      <div className={`border-2 rounded-lg p-4 ${dryRun ? 'bg-blue-50 border-blue-400' : 'bg-red-50 border-red-400'}`}>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-bold text-gray-900">🔍 Safe Mode (Preview)</span>
+        {/* Safe Mode Toggle */}
+        <div
+          className={`flex items-center justify-between py-3 px-4 rounded-xl border transition-colors ${
+            dryRun ? 'bg-white border-gray-200 hover:border-gray-300' : 'bg-red-50 border-red-200 hover:border-red-300'
+          }`}>
+          <div className="flex items-center gap-3">
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center text-base ${
+                dryRun ? 'bg-gray-100' : 'bg-red-100'
+              }`}>
+              {dryRun ? '🔍' : '⚡'}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">{dryRun ? 'Preview mode' : 'Live mode'}</p>
+              <p className={`text-xs ${dryRun ? 'text-gray-500' : 'text-red-600 font-medium'}`}>
+                {dryRun ? 'No changes to Monarch' : 'Will update Monarch!'}
+              </p>
+            </div>
+          </div>
           <ToggleSwitch checked={dryRun} onChange={handleToggle} />
         </div>
-        <p className={`text-xs font-medium ${dryRun ? 'text-blue-800' : 'text-red-800'}`}>
-          {dryRun ? '✓ Preview only - No Monarch changes' : '⚠️ LIVE MODE - Will update Monarch!'}
-        </p>
       </div>
 
       {/* Run Button */}

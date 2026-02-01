@@ -18,6 +18,7 @@ const manifest = {
     'https://app.monarchmoney.com/*',
     'https://app.monarch.com/*',
     'https://api.monarchmoney.com/*',
+    'https://api.monarch.com/*',
   ],
   background: {
     service_worker: 'src/pages/background/index.js',

@@ -93,11 +93,10 @@ const MainClean = () => {
 
   const forceSync = useCallback(async () => {
     if (!ready) return;
-    // Home tab sync: Always use override to ensure updates happen
-    await appStorage.patch({
-      options: { ...appData.options, overrideTransactions: true },
+    const isDryRun = appData.options?.dryRunMode ?? true;
+    await chrome.runtime.sendMessage({
+      action: isDryRun ? Action.DryRun : Action.FullSync,
     });
-    await chrome.runtime.sendMessage({ action: Action.FullSync });
   }, [ready, appData.options]);
 
   const amazonConnected = appData.amazonStatus === AuthStatus.Success;
@@ -113,9 +112,13 @@ const MainClean = () => {
             <p className="text-xs text-gray-500">Amazon.ca ↔ Monarch Money</p>
           </div>
           {ready && (
-            <Button size="sm" color="purple" onClick={forceSync} disabled={!ready}>
+            <Button
+              size="sm"
+              color={appData.options?.dryRunMode ? 'purple' : 'success'}
+              onClick={forceSync}
+              disabled={!ready}>
               <FaSync className="mr-1 text-xs" />
-              <span className="text-xs">Sync</span>
+              <span className="text-xs">{appData.options?.dryRunMode ? 'Preview' : 'Sync'}</span>
             </Button>
           )}
         </div>
@@ -151,24 +154,76 @@ const MainClean = () => {
         ) : null}
       </div>
 
-      {/* Auto-sync Toggle - Bottom */}
+      {/* Sync Options - Bottom */}
       {ready && (
-        <div className="px-5 py-3 border-t border-gray-200 bg-gray-50">
+        <div className="px-5 py-4 border-t border-gray-200 bg-gray-50 space-y-3">
+          {/* Re-sync existing */}
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Auto-Sync</div>
-              <div className="text-xs text-gray-500">
-                {appData.options.syncEnabled && syncAlarm
-                  ? `Next: ${new Date(syncAlarm.scheduledTime).toLocaleTimeString()}`
-                  : 'Sync daily automatically'}
+            <div className="flex items-center gap-2">
+              <span className="text-base">♻️</span>
+              <div>
+                <div className="text-sm font-medium text-gray-900">Re-sync existing</div>
+                <div className="text-xs text-gray-500">Update transactions with notes</div>
               </div>
             </div>
             <ToggleSwitch
-              checked={appData.options.syncEnabled}
-              onChange={value => {
-                appStorage.patch({ options: { ...appData.options, syncEnabled: value } });
+              checked={appData.options?.overrideTransactions || false}
+              onChange={checked => {
+                appData.options &&
+                  appStorage.patch({
+                    options: { ...appData.options, overrideTransactions: checked },
+                  });
               }}
             />
+          </div>
+
+          {/* Preview mode */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-base">{appData.options?.dryRunMode ? '🔍' : '⚡'}</span>
+              <div>
+                <div className="text-sm font-medium text-gray-900">
+                  {appData.options?.dryRunMode ? 'Preview mode' : 'Live mode'}
+                </div>
+                <div
+                  className={`text-xs ${appData.options?.dryRunMode ? 'text-gray-500' : 'text-red-600 font-medium'}`}>
+                  {appData.options?.dryRunMode ? 'No changes to Monarch' : 'Will update Monarch!'}
+                </div>
+              </div>
+            </div>
+            <ToggleSwitch
+              checked={appData.options?.dryRunMode ?? true}
+              onChange={checked => {
+                appData.options &&
+                  appStorage.patch({
+                    options: { ...appData.options, dryRunMode: checked },
+                  });
+              }}
+            />
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-gray-200 pt-3">
+            {/* Auto-Sync */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🔄</span>
+                <div>
+                  <div className="text-sm font-medium text-gray-900">Auto-Sync</div>
+                  <div className="text-xs text-gray-500">
+                    {appData.options.syncEnabled && syncAlarm
+                      ? `Next: ${new Date(syncAlarm.scheduledTime).toLocaleTimeString()}`
+                      : 'Sync daily automatically'}
+                  </div>
+                </div>
+              </div>
+              <ToggleSwitch
+                checked={appData.options.syncEnabled}
+                onChange={value => {
+                  appStorage.patch({ options: { ...appData.options, syncEnabled: value } });
+                }}
+              />
+            </div>
           </div>
         </div>
       )}

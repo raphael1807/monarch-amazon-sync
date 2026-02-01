@@ -195,13 +195,19 @@ async function fetchOrdersForYear(year: number | undefined): Promise<Order[]> {
   let endPage = 1;
   $('.a-pagination li').each((_, el) => {
     const page = $(el).text().trim();
-    if (!Number.isNaN(page)) {
-      const numPage = parseInt(page);
-      if (numPage > endPage) {
-        endPage = numPage;
-      }
+    const numPage = parseInt(page, 10);
+    // Only consider valid page numbers (parseInt returns NaN for non-numeric strings)
+    if (!isNaN(numPage) && numPage > 0 && numPage > endPage) {
+      endPage = numPage;
     }
   });
+
+  // Safety limit: Cap at 50 pages to prevent runaway fetching
+  const MAX_PAGES = 50;
+  if (endPage > MAX_PAGES) {
+    logger.warning(`Pagination shows ${endPage} pages, capping at ${MAX_PAGES}`);
+    endPage = MAX_PAGES;
+  }
 
   logger.info('Pagination detected', { totalPages: endPage });
   await updateProgress(ProgressPhase.AmazonPageScan, endPage, 0);
@@ -212,10 +218,28 @@ async function fetchOrdersForYear(year: number | undefined): Promise<Order[]> {
 
   await updateProgress(ProgressPhase.AmazonPageScan, endPage, 1);
 
+  // Track consecutive empty pages to detect end of results
+  let consecutiveEmptyPages = 0;
+  const MAX_EMPTY_PAGES = 2;
+
   for (let i = 2; i <= endPage; i++) {
     const ordersPage = await processOrders(year, i);
     logger.info(`Page ${i}: Found ${ordersPage.length} orders`);
-    orderCards = orderCards.concat(ordersPage);
+
+    if (ordersPage.length === 0) {
+      consecutiveEmptyPages++;
+      logger.warning(`Empty page detected (${consecutiveEmptyPages}/${MAX_EMPTY_PAGES})`);
+
+      // Stop early if we hit multiple empty pages in a row
+      if (consecutiveEmptyPages >= MAX_EMPTY_PAGES) {
+        logger.info(`Stopping pagination early - ${MAX_EMPTY_PAGES} consecutive empty pages`);
+        break;
+      }
+    } else {
+      consecutiveEmptyPages = 0; // Reset counter
+      orderCards = orderCards.concat(ordersPage);
+    }
+
     await updateProgress(ProgressPhase.AmazonPageScan, endPage, i);
   }
 
