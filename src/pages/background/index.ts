@@ -701,7 +701,8 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
     }
 
     // Add Amazon order date when it differs from bank transaction date
-    if (order && order.date && order.date !== data.monarch.date) {
+    // (skip for refunds -- order date is already in the status header)
+    if (!isRefund && order && order.date && order.date !== data.monarch.date) {
       fullNote += `\n📅 Ordered: ${order.date}`;
     }
 
