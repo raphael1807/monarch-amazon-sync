@@ -127,7 +127,7 @@ export function DateRangeSelector({ selectedRange, customStart, customEnd, onCha
             onChange={() => handleRangeChange('thisYear')}
           />
           <label htmlFor="range-thisYear" className="text-sm cursor-pointer flex-1">
-            <div className="font-medium">This year (2025)</div>
+            <div className="font-medium">This year ({new Date().getFullYear()})</div>
             <div className="text-xs text-gray-500">{getEstimate('thisYear')}</div>
           </label>
         </div>

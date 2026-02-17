@@ -1,7 +1,7 @@
 // Quebec Tax Calculator
 const GST_RATE = 0.05; // 5%
 const QST_RATE = 0.09975; // 9.975%
-const TOLERANCE = 0.05; // 5 cents tolerance for rounding
+const TOLERANCE = 0.1; // 10 cents tolerance for rounding (multi-item orders compound rounding)
 
 export type TaxBreakdown = {
   subtotal: number;
@@ -80,7 +80,7 @@ export function calculateQuebecTaxes(itemsTotal: number, monarchTotal: number): 
   }
 }
 
-export function formatTaxBreakdown(tax: TaxBreakdown): string {
+export function formatTaxBreakdown(tax: TaxBreakdown, isRefund: boolean = false): string {
   let output = '\n\n💰 Tax Breakdown:\n';
   output += `Subtotal: $${tax.subtotal.toFixed(2)}\n`;
 
@@ -113,12 +113,66 @@ export function formatTaxBreakdown(tax: TaxBreakdown): string {
     output += 'No taxes applied\n';
     output += `Total: $${tax.actualTotal.toFixed(2)} ✓`;
   } else {
-    // Unknown - show the difference
-    output += `Other fees/taxes: $${tax.difference.toFixed(2)}\n`;
-    output += `Total: $${tax.actualTotal.toFixed(2)}`;
+    // Unknown - analyze the difference to give specific, actionable guidance
+    const absDiff = Math.abs(tax.difference);
+    const diffPercent = tax.subtotal > 0 ? (absDiff / tax.subtotal) * 100 : 0;
 
-    if (Math.abs(tax.difference) > 0.5) {
-      output += '\n💡 May include shipping, discounts, or tax-exempt items';
+    // Calculate what expected taxes WOULD be for reference
+    const expectedGST = tax.subtotal * GST_RATE;
+    const expectedBoth = tax.subtotal * (GST_RATE + QST_RATE);
+
+    if (isRefund) {
+      // Refund scenarios
+      if (tax.difference < 0 && absDiff > 1) {
+        output += `Partial refund detected\n`;
+        output += `Items total: $${tax.subtotal.toFixed(2)}\n`;
+        output += `Refund amount: $${tax.actualTotal.toFixed(2)}\n`;
+        output += '💡 Not all items may have been refunded';
+      } else {
+        output += `Refund: $${tax.actualTotal.toFixed(2)}\n`;
+        output += `Expected (items): $${tax.subtotal.toFixed(2)}\n`;
+        output += `Difference: $${tax.difference.toFixed(2)}`;
+      }
+    } else if (tax.difference < 0 && absDiff > 1) {
+      // Negative difference on a purchase = coupon, cancelled item, or promo
+      output += `Coupon/discount: -$${absDiff.toFixed(2)}\n`;
+      output += `Total: $${tax.actualTotal.toFixed(2)}\n`;
+      output += '💡 A coupon, promo code, or item cancellation likely reduced the total';
+    } else if (diffPercent > 50) {
+      // Very large discrepancy - likely wrong match or missing items
+      output += `⚠️ Large discrepancy: +$${tax.difference.toFixed(2)}\n`;
+      output += `Items total: $${tax.subtotal.toFixed(2)}\n`;
+      output += `Charged: $${tax.actualTotal.toFixed(2)}\n`;
+      output += '💡 Check invoice - items may be missing or wrong order matched';
+    } else if (tax.difference > 0) {
+      // Positive difference - taxes, shipping, or fees
+      const expectedTaxGST = tax.subtotal + expectedGST;
+      const expectedTaxBoth = tax.subtotal + expectedBoth;
+
+      if (Math.abs(tax.actualTotal - expectedTaxBoth) < 1) {
+        // Close to GST+QST -- likely mixed-tax items where per-item rounding differs
+        output += `Est. GST (5%): $${expectedGST.toFixed(2)}\n`;
+        output += `Est. QST (9.975%): $${(tax.subtotal * QST_RATE).toFixed(2)}\n`;
+        output += `Total: $${tax.actualTotal.toFixed(2)} ~✓`;
+      } else if (Math.abs(tax.actualTotal - expectedTaxGST) < 1) {
+        // Close to GST only -- some items may be QST-exempt (vitamins, food, books)
+        output += `Est. GST (5%): $${expectedGST.toFixed(2)}\n`;
+        output += `Total: $${tax.actualTotal.toFixed(2)} ~✓\n`;
+        output += '💡 Some items may be QST-exempt (vitamins, food, books)';
+      } else if (absDiff < 5) {
+        // Small extra charge - likely shipping
+        output += `Subtotal + fees: $${tax.difference.toFixed(2)} extra\n`;
+        output += `Total: $${tax.actualTotal.toFixed(2)}\n`;
+        output += '💡 May include shipping or handling';
+      } else {
+        output += `Additional charges: $${tax.difference.toFixed(2)}\n`;
+        output += `Total: $${tax.actualTotal.toFixed(2)}\n`;
+        output += '💡 May include shipping, handling, or mixed tax rates';
+      }
+    } else {
+      // Very small difference (close to zero but outside tolerance)
+      output += `Rounding adjustment: $${tax.difference.toFixed(2)}\n`;
+      output += `Total: $${tax.actualTotal.toFixed(2)} ~✓`;
     }
   }
 

@@ -1,9 +1,38 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, ToggleSwitch } from 'flowbite-react';
+import { Button } from 'flowbite-react';
+
+// iOS-style toggle component
+function Toggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label || 'Toggle'}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-white/75 ${
+        checked ? 'bg-green-500' : 'bg-gray-300'
+      }`}>
+      <span
+        className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+          checked ? 'translate-x-5' : 'translate-x-0.5'
+        } mt-0.5`}
+      />
+    </button>
+  );
+}
 import progressStorage, { ProgressPhase } from '@root/src/shared/storages/progressStorage';
 import useStorage from '@root/src/shared/hooks/useStorage';
 import { checkAmazonAuth, Order } from '@root/src/shared/api/amazonApi';
-import appStorage, { AuthStatus } from '@root/src/shared/storages/appStorage';
+import appStorage, { AuthStatus, DateRangeOption, Page } from '@root/src/shared/storages/appStorage';
 import withErrorBoundary from '@root/src/shared/hoc/withErrorBoundary';
 import withSuspense from '@root/src/shared/hoc/withSuspense';
 import { useAlarm } from '@root/src/shared/hooks/useAlarm';
@@ -12,8 +41,72 @@ import transactionStorage from '@root/src/shared/storages/transactionStorage';
 import { matchTransactions, MatchedTransaction } from '@root/src/shared/api/matchUtil';
 import { MonarchTransaction } from '@root/src/shared/api/monarchApi';
 import UnmatchedTransactions from './components/UnmatchedTransactions';
-import { FaCheckCircle, FaExclamationTriangle, FaSync, FaChevronDown, FaChevronUp, FaDownload } from 'react-icons/fa';
+import {
+  FaCheckCircle,
+  FaExclamationTriangle,
+  FaSync,
+  FaChevronDown,
+  FaChevronUp,
+  FaDownload,
+  FaCalendarAlt,
+} from 'react-icons/fa';
 import { stringify } from 'csv-stringify/browser/esm/sync';
+
+// Helper to get date range label and dates
+function getDateRangeInfo(
+  rangeType: DateRangeOption,
+  customStart?: string,
+  customEnd?: string,
+): { label: string; dates: string } {
+  const now = new Date();
+  const formatDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  switch (rangeType) {
+    case '7days': {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 7);
+      return { label: 'Last 7 days', dates: `${formatDate(start)} - ${formatDate(now)}` };
+    }
+    case '14days': {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 14);
+      return { label: 'Last 14 days', dates: `${formatDate(start)} - ${formatDate(now)}` };
+    }
+    case '30days': {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 30);
+      return { label: 'Last 30 days', dates: `${formatDate(start)} - ${formatDate(now)}` };
+    }
+    case '3months': {
+      const start = new Date(now);
+      start.setMonth(start.getMonth() - 3);
+      return { label: 'Last 3 months', dates: `${formatDate(start)} - ${formatDate(now)}` };
+    }
+    case '6months': {
+      const start = new Date(now);
+      start.setMonth(start.getMonth() - 6);
+      return { label: 'Last 6 months', dates: `${formatDate(start)} - ${formatDate(now)}` };
+    }
+    case 'thisYear': {
+      const start = new Date(now.getFullYear(), 0, 1);
+      return { label: `This year (${now.getFullYear()})`, dates: `${formatDate(start)} - ${formatDate(now)}` };
+    }
+    case 'lastYear': {
+      const lastYear = now.getFullYear() - 1;
+      const start = new Date(lastYear, 0, 1);
+      const end = new Date(lastYear, 11, 31);
+      return { label: `Last year (${lastYear})`, dates: `${formatDate(start)} - ${formatDate(end)}` };
+    }
+    case 'custom': {
+      if (customStart && customEnd) {
+        return { label: 'Custom range', dates: `${customStart} - ${customEnd}` };
+      }
+      return { label: 'Custom range', dates: 'Not set' };
+    }
+    default:
+      return { label: 'Last 14 days', dates: '' };
+  }
+}
 
 const MainClean = () => {
   const progress = useStorage(progressStorage);
@@ -93,7 +186,7 @@ const MainClean = () => {
 
   const forceSync = useCallback(async () => {
     if (!ready) return;
-    const isDryRun = appData.options?.dryRunMode ?? true;
+    const isDryRun = appData.options?.dryRunMode ?? false;
     await chrome.runtime.sendMessage({
       action: isDryRun ? Action.DryRun : Action.FullSync,
     });
@@ -110,6 +203,21 @@ const MainClean = () => {
           <div>
             <h1 className="text-lg font-bold text-gray-900">Dashboard</h1>
             <p className="text-xs text-gray-500">Amazon.ca ↔ Monarch Money</p>
+            {/* Date Range - inline below subtitle */}
+            <button
+              onClick={() => appStorage.patch({ page: Page.ManualBackfill })}
+              className="flex items-center gap-1.5 mt-1.5 px-2 py-1 bg-purple-100 rounded-md text-xs text-purple-700 hover:bg-purple-200 transition-colors">
+              <FaCalendarAlt size={11} />
+              <span className="font-medium">
+                {
+                  getDateRangeInfo(
+                    appData.options?.dateRangeType || '14days',
+                    appData.options?.customStartDate,
+                    appData.options?.customEndDate,
+                  ).dates
+                }
+              </span>
+            </button>
           </div>
           {ready && (
             <Button
@@ -157,17 +265,27 @@ const MainClean = () => {
       {/* Sync Options - Bottom */}
       {ready && (
         <div className="px-5 py-4 border-t border-gray-200 bg-gray-50 space-y-3">
-          {/* Re-sync existing */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-base">♻️</span>
+          {/* Include already-synced */}
+          <div className="flex items-center justify-between py-1">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
+                  appData.options?.overrideTransactions ? 'bg-blue-100' : 'bg-gray-100'
+                }`}>
+                {appData.options?.overrideTransactions ? '✅' : '⏭️'}
+              </div>
               <div>
-                <div className="text-sm font-medium text-gray-900">Re-sync existing</div>
-                <div className="text-xs text-gray-500">Update transactions with notes</div>
+                <div className="text-sm font-medium text-gray-900">
+                  {appData.options?.overrideTransactions ? 'All transactions' : 'New only'}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {appData.options?.overrideTransactions ? 'Includes already-synced' : 'Skips transactions with notes'}
+                </div>
               </div>
             </div>
-            <ToggleSwitch
+            <Toggle
               checked={appData.options?.overrideTransactions || false}
+              label="Include already-synced transactions"
               onChange={checked => {
                 appData.options &&
                   appStorage.patch({
@@ -177,26 +295,31 @@ const MainClean = () => {
             />
           </div>
 
-          {/* Preview mode */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-base">{appData.options?.dryRunMode ? '🔍' : '⚡'}</span>
+          {/* Preview vs Live */}
+          <div className="flex items-center justify-between py-1">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
+                  appData.options?.dryRunMode ? 'bg-gray-100' : 'bg-green-100'
+                }`}>
+                {appData.options?.dryRunMode ? '👁️' : '💾'}
+              </div>
               <div>
                 <div className="text-sm font-medium text-gray-900">
-                  {appData.options?.dryRunMode ? 'Preview mode' : 'Live mode'}
+                  {appData.options?.dryRunMode ? 'Preview only' : 'Save to Monarch'}
                 </div>
-                <div
-                  className={`text-xs ${appData.options?.dryRunMode ? 'text-gray-500' : 'text-red-600 font-medium'}`}>
-                  {appData.options?.dryRunMode ? 'No changes to Monarch' : 'Will update Monarch!'}
+                <div className={`text-xs ${appData.options?.dryRunMode ? 'text-gray-500' : 'text-green-600'}`}>
+                  {appData.options?.dryRunMode ? 'No changes made' : 'Updates will be saved'}
                 </div>
               </div>
             </div>
-            <ToggleSwitch
-              checked={appData.options?.dryRunMode ?? true}
+            <Toggle
+              checked={!(appData.options?.dryRunMode ?? false)}
+              label="Save changes to Monarch"
               onChange={checked => {
                 appData.options &&
                   appStorage.patch({
-                    options: { ...appData.options, dryRunMode: checked },
+                    options: { ...appData.options, dryRunMode: !checked },
                   });
               }}
             />
@@ -204,21 +327,31 @@ const MainClean = () => {
 
           {/* Divider */}
           <div className="border-t border-gray-200 pt-3">
-            {/* Auto-Sync */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-base">🔄</span>
+            {/* Auto-sync */}
+            <div className="flex items-center justify-between py-1">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
+                    appData.options.syncEnabled ? 'bg-purple-100' : 'bg-gray-100'
+                  }`}>
+                  {appData.options.syncEnabled ? '🔄' : '✋'}
+                </div>
                 <div>
-                  <div className="text-sm font-medium text-gray-900">Auto-Sync</div>
+                  <div className="text-sm font-medium text-gray-900">
+                    {appData.options.syncEnabled ? 'Auto-sync ON' : 'Manual sync'}
+                  </div>
                   <div className="text-xs text-gray-500">
-                    {appData.options.syncEnabled && syncAlarm
-                      ? `Next: ${new Date(syncAlarm.scheduledTime).toLocaleTimeString()}`
-                      : 'Sync daily automatically'}
+                    {appData.options.syncEnabled
+                      ? syncAlarm
+                        ? `Next: ${new Date(syncAlarm.scheduledTime).toLocaleTimeString()}`
+                        : 'Runs every 24 hours'
+                      : 'Click Sync button to run'}
                   </div>
                 </div>
               </div>
-              <ToggleSwitch
+              <Toggle
                 checked={appData.options.syncEnabled}
+                label="Enable auto-sync"
                 onChange={value => {
                   appStorage.patch({ options: { ...appData.options, syncEnabled: value } });
                 }}

@@ -87,9 +87,14 @@ export function matchTransactions(
       const upper = orderTimestamp + DAYS_7;
       const matchesDate = monarchTimestamp >= lower && monarchTimestamp <= upper;
 
-      // Check if amounts match (allow for rounding differences - Amazon.ca totals may not include cents)
+      // Check if amounts match
+      // Use percentage-based tolerance: 5% or $0.50, whichever is larger
+      // This prevents matching $5.65 to $14.48 (would need 155% tolerance!)
       const amountDiff = Math.abs(monarchTransaction.amount - amazonTransaction.amount);
-      const amountsMatch = amountDiff < 1.0; // Allow up to $1 difference
+      const baseAmount = Math.max(Math.abs(monarchTransaction.amount), Math.abs(amazonTransaction.amount));
+      const percentTolerance = baseAmount * 0.05; // 5% of the larger amount
+      const tolerance = Math.max(percentTolerance, 0.5); // At least $0.50, but scales with amount
+      const amountsMatch = amountDiff <= tolerance;
 
       // Log potential matches for debugging
       if (matchesDate && amountsMatch) {

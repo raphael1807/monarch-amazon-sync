@@ -22,6 +22,21 @@ import { calculateDateRange } from '@root/src/shared/utils/dateRangeCalculator';
 
 reloadOnUpdate('pages/background');
 
+/**
+ * Truncate an Amazon product title to a readable length.
+ * Cuts at the first comma (or ~80 chars) to strip SEO filler.
+ */
+function truncateTitle(title: string, maxLen = 80): string {
+  if (!title) return title;
+  // Cut at the first comma that appears after at least 20 chars (to avoid cutting brand names like "DJI Mic Series, ...")
+  const commaIdx = title.indexOf(',', 20);
+  if (commaIdx > 0 && commaIdx <= maxLen) {
+    return title.slice(0, commaIdx).trim();
+  }
+  if (title.length <= maxLen) return title;
+  return title.slice(0, maxLen).trim() + '…';
+}
+
 // Log when service worker starts
 logger.header('Monarch/Amazon Sync Extension v1.0.0 - Service Worker Started');
 console.log('🚀 Monarch/Amazon Sync Extension Service Worker Started');
@@ -215,18 +230,14 @@ async function handleDryRun(payload: Payload | undefined, sendResponse: (args: u
 }
 
 async function handleFullSync(payload: Payload | undefined, sendResponse: (args: unknown) => void) {
-  const startTime = Date.now();
   if (await inProgress()) {
     sendResponse({ success: false });
     return;
   }
-  if (await downloadAndStoreTransactions(payload?.year, false)) {
-    if (await updateMonarchTransactions(startTime)) {
-      sendResponse({ success: true });
-      return;
-    }
-  }
-  sendResponse({ success: false });
+  // downloadAndStoreTransactions already calls updateMonarchTransactions internally
+  // with the correct override flag, so we just need to check if it succeeded
+  const success = await downloadAndStoreTransactions(payload?.year, false);
+  sendResponse({ success });
 }
 
 async function logSyncComplete(
@@ -620,10 +631,10 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
   let cachedSkips = 0;
 
   for (const data of matches) {
-    // Build item list
+    // Build item list with truncated titles
     const itemString = data.items
       .map(item => {
-        return item.quantity + 'x ' + item.title + ' - $' + item.price.toFixed(2);
+        return item.quantity + 'x ' + truncateTitle(item.title) + ' - $' + item.price.toFixed(2);
       })
       .join('\n\n')
       .trim();
@@ -635,7 +646,7 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
       continue;
     }
 
-    // Find the order to get invoice URLs
+    // Find the order to get invoice URLs and order date
     const order = transactions.orders.find(o => o.transactions.some(t => t.id === data.amazon.id));
 
     // Build complete note with items + tax breakdown + invoice URLs
@@ -646,38 +657,64 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
     const taxes = calculateQuebecTaxes(itemsTotal, Math.abs(data.monarch.amount));
 
     // Determine if verification is needed
-    // Only flag if there's an actual price discrepancy (> $0.50 difference)
-    const hasPriceDiscrepancy = taxes.type === 'Unknown' || Math.abs(taxes.difference) > 0.5;
+    const absDifference = Math.abs(taxes.difference);
+    const percentDifference = itemsTotal > 0 ? (absDifference / itemsTotal) * 100 : 0;
+    const hasPriceDiscrepancy = taxes.type === 'Unknown' && (absDifference > 0.5 || percentDifference > 10);
     const isRefund = data.amazon.refund;
 
-    // Add status header at the top
+    // Build confidence string for the status line
+    const confidenceStr = data.confidence != null ? ` (${data.confidence}% - ${data.reason})` : '';
+
+    // Status header FIRST - so user knows immediately if they need to care
     if (isRefund) {
-      fullNote = '🔄 REFUND\n\n';
+      const isPartialRefund = Math.abs(data.monarch.amount) < itemsTotal * 0.9;
+      if (isPartialRefund) {
+        fullNote = '🔄 PARTIAL REFUND';
+      } else {
+        fullNote = '🔄 REFUND';
+      }
+      // Add original order date for refund cross-referencing
+      if (order) {
+        fullNote += ` (ordered: ${order.date})`;
+      }
       logger.info('Processing refund transaction', {
         monarchId: data.monarch.id,
         amount: data.amazon.amount,
         originalOrderId: data.amazon.id,
+        isPartial: isPartialRefund,
       });
     } else if (hasPriceDiscrepancy) {
-      fullNote = '⚠️ VERIFY - Price discrepancy\n\n';
+      fullNote = '⚠️ VERIFY - Price discrepancy' + confidenceStr;
     } else {
-      fullNote = '✅ VERIFIED\n\n';
+      fullNote = '✅ VERIFIED' + confidenceStr;
     }
 
-    fullNote += itemString;
+    // Only warn about multiple invoices when there's a discrepancy or unknown tax
+    // (if taxes match perfectly, multiple invoices are not a concern)
+    if (
+      order &&
+      order.invoiceUrls &&
+      order.invoiceUrls.length > 1 &&
+      (hasPriceDiscrepancy || taxes.type === 'Unknown')
+    ) {
+      fullNote += '\n⚠️ Multiple invoices - verify total matches';
+    }
 
-    // Add Quebec tax breakdown
-    fullNote += formatTaxBreakdown(taxes);
+    // Add Amazon order date when it differs from bank transaction date
+    if (order && order.date && order.date !== data.monarch.date) {
+      fullNote += `\n📅 Ordered: ${order.date}`;
+    }
+
+    // Then items
+    fullNote += '\n\n' + itemString;
+
+    // Add Quebec tax breakdown (pass isRefund for better messaging)
+    fullNote += formatTaxBreakdown(taxes, isRefund);
 
     // Add invoice URLs if available
     if (order && order.invoiceUrls && order.invoiceUrls.length > 0) {
       fullNote += '\n\n📄 Invoice' + (order.invoiceUrls.length > 1 ? 's' : '') + ':\n';
       fullNote += order.invoiceUrls.map((url, i) => `${i + 1}. ${url}`).join('\n');
-
-      // Add note if multiple invoices
-      if (order.invoiceUrls.length > 1) {
-        fullNote += '\n\n💡 Multiple invoices may indicate split shipments';
-      }
 
       logger.info(`Adding ${order.invoiceUrls.length} invoice URL(s) + tax breakdown`, {
         orderId: order.id,
@@ -739,10 +776,29 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
     await new Promise(resolve => setTimeout(resolve, 500));
   }
 
+  // Mark unmatched Amazon-merchant transactions so user knows they were processed
+  const matchedMonarchIds = new Set(matches.map(m => m.monarch.id));
+  let unmatchedMarked = 0;
+  for (const t of transactions.transactions) {
+    if (matchedMonarchIds.has(t.id)) continue;
+    if (t.notes) continue; // already has notes, don't overwrite
+
+    const unmatchedNote = '❓ No matching Amazon order found within ±7 days';
+    try {
+      await updateMonarchTransaction(appData.monarchKey, t.id, unmatchedNote);
+      unmatchedMarked++;
+    } catch (error) {
+      logger.error(`Failed to mark unmatched transaction ${t.id}`, error);
+    }
+    await new Promise(resolve => setTimeout(resolve, 300));
+  }
+  if (unmatchedMarked > 0) {
+    logger.info(`Marked ${unmatchedMarked} unmatched transaction(s)`);
+  }
+
   const duration = `${((Date.now() - (startTime || Date.now())) / 1000).toFixed(2)}s`;
 
   // Find unmatched Monarch transactions near split-invoice orders
-  const matchedMonarchIds = new Set(matches.map(m => m.monarch.id));
   const unmatchedMonarch = transactions.transactions.filter(t => !matchedMonarchIds.has(t.id) && !t.notes);
 
   logToFile('\n🔍 Looking for split-invoice helper opportunities:');
@@ -779,13 +835,48 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
       if (isNaN(tDate)) return false;
 
       const daysDiff = Math.abs(tDate - orderDate) / (1000 * 60 * 60 * 24);
-      const orderTotal = order.transactions[0]?.amount || 0;
+      const monarchAmount = Math.abs(t.amount);
       const withinDateRange = daysDiff <= 7;
-      const amountMakesSense = Math.abs(t.amount) <= Math.abs(orderTotal) * 1.1;
 
-      const checkLine = `      Checking Monarch $${t.amount} (${t.date}): days=${daysDiff.toFixed(
+      // For split invoices, the Monarch amount should match one of the items (with potential taxes)
+      // This prevents matching random transactions that happen to be near the date
+      const matchesAnItem = order.items.some(item => {
+        const itemWithGST = item.price * 1.05;
+        const itemWithBoth = item.price * 1.14975;
+        return (
+          Math.abs(monarchAmount - item.price) < 0.5 ||
+          Math.abs(monarchAmount - itemWithGST) < 0.5 ||
+          Math.abs(monarchAmount - itemWithBoth) < 0.5
+        );
+      });
+
+      // Also check if it could be a sum of 2+ items (for multi-item orders)
+      let matchesItemCombo = false;
+      if (order.items.length >= 2 && !matchesAnItem) {
+        // Try pairs of items
+        for (let i = 0; i < order.items.length; i++) {
+          for (let j = i + 1; j < order.items.length; j++) {
+            const pairSum = order.items[i].price + order.items[j].price;
+            const pairWithGST = pairSum * 1.05;
+            const pairWithBoth = pairSum * 1.14975;
+            if (
+              Math.abs(monarchAmount - pairSum) < 0.5 ||
+              Math.abs(monarchAmount - pairWithGST) < 0.5 ||
+              Math.abs(monarchAmount - pairWithBoth) < 0.5
+            ) {
+              matchesItemCombo = true;
+              break;
+            }
+          }
+          if (matchesItemCombo) break;
+        }
+      }
+
+      const amountMakesSense = matchesAnItem || matchesItemCombo;
+
+      const checkLine = `      Checking Monarch $${monarchAmount.toFixed(2)} (${t.date}): days=${daysDiff.toFixed(
         1,
-      )}, amount ok=${amountMakesSense}, match=${withinDateRange && amountMakesSense}`;
+      )}, matches item=${matchesAnItem}, matches combo=${matchesItemCombo}`;
       console.log(checkLine);
       logToFile(checkLine);
 
@@ -801,7 +892,7 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
 
     for (const candidate of topCandidates) {
       try {
-        // Build item list with prices and tax calculations
+        // Build item list with prices and tax calculations (truncated titles)
         const itemsList = order.items
           .map((item, i) => {
             const price = item.price;
@@ -810,7 +901,7 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
             const withGST = price + gst;
             const withBoth = price + gst + qst;
 
-            return `   ${i + 1}. ${item.title}
+            return `   ${i + 1}. ${truncateTitle(item.title)}
       Price: $${price.toFixed(2)}
       w/ GST (5%): $${withGST.toFixed(2)}
       w/ GST+QST (15%): $${withBoth.toFixed(2)}`;
