@@ -667,7 +667,23 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
     const isRefund = data.amazon.refund;
 
     // Build confidence string for the status line
-    const confidenceStr = data.confidence != null ? ` (${data.confidence}% - ${data.reason})` : '';
+    // When amounts match exactly, just show date offset (no %). When they differ, show full confidence.
+    const isExactAmount = data.reason?.includes('Exact amount match');
+    let confidenceStr = '';
+    if (data.confidence != null && data.reason) {
+      if (isExactAmount) {
+        // Strip "Exact amount match" from reasons, keep only date/other info
+        const otherReasons = data.reason
+          .split(' • ')
+          .filter(r => r !== 'Exact amount match')
+          .join(' • ');
+        if (otherReasons) {
+          confidenceStr = ` (${otherReasons})`;
+        }
+      } else {
+        confidenceStr = ` (${data.confidence}% - ${data.reason})`;
+      }
+    }
 
     // Status header FIRST - so user knows immediately if they need to care
     if (isRefund) {
