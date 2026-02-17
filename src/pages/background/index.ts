@@ -19,22 +19,26 @@ import {
 import { initFileLogger, saveLogFile, logFinalStats, logToFile } from '@root/src/shared/utils/fileLogger';
 import { calculateQuebecTaxes, formatTaxBreakdown } from '@root/src/shared/utils/taxCalculator';
 import { calculateDateRange } from '@root/src/shared/utils/dateRangeCalculator';
+import { parseFrenchDate } from '@root/src/shared/utils/dateParser';
 
 reloadOnUpdate('pages/background');
 
 /**
  * Truncate an Amazon product title to a readable length.
- * Cuts at the first comma (or ~80 chars) to strip SEO filler.
+ * Cuts at the first comma (or ~80 chars at a word boundary) to strip SEO filler.
  */
 function truncateTitle(title: string, maxLen = 80): string {
   if (!title) return title;
-  // Cut at the first comma that appears after at least 20 chars (to avoid cutting brand names like "DJI Mic Series, ...")
+  // Cut at the first comma that appears after at least 20 chars
   const commaIdx = title.indexOf(',', 20);
   if (commaIdx > 0 && commaIdx <= maxLen) {
     return title.slice(0, commaIdx).trim();
   }
   if (title.length <= maxLen) return title;
-  return title.slice(0, maxLen).trim() + '…';
+  // Find the last space before maxLen to avoid cutting mid-word
+  const lastSpace = title.lastIndexOf(' ', maxLen);
+  const cutPoint = lastSpace > 20 ? lastSpace : maxLen;
+  return title.slice(0, cutPoint).trim() + '…';
 }
 
 // Log when service worker starts
@@ -684,7 +688,7 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
         isPartial: isPartialRefund,
       });
     } else if (hasPriceDiscrepancy) {
-      fullNote = '⚠️ VERIFY - Price discrepancy' + confidenceStr;
+      fullNote = '⚠️ VERIFY - Price discrepancy';
     } else {
       fullNote = '✅ VERIFIED' + confidenceStr;
     }
@@ -702,8 +706,14 @@ async function updateMonarchTransactions(startTime?: number, forceOverride: bool
 
     // Add Amazon order date when it differs from bank transaction date
     // (skip for refunds -- order date is already in the status header)
-    if (!isRefund && order && order.date && order.date !== data.monarch.date) {
-      fullNote += `\n📅 Ordered: ${order.date}`;
+    // Normalize both dates to ISO (YYYY-MM-DD) before comparing since Amazon
+    // may return French format ("17 janvier 2026") while Monarch uses ISO
+    if (!isRefund && order && order.date) {
+      const normalizedOrderDate = parseFrenchDate(order.date) || order.date;
+      const normalizedMonarchDate = parseFrenchDate(data.monarch.date) || data.monarch.date;
+      if (normalizedOrderDate !== normalizedMonarchDate) {
+        fullNote += `\n📅 Ordered: ${order.date}`;
+      }
     }
 
     // Then items
