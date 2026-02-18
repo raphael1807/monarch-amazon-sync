@@ -15,6 +15,7 @@ const manifest = {
   host_permissions: [
     'https://amazon.ca/*',
     'https://www.amazon.ca/*',
+    'https://www.amazon.com/*',
     'https://app.monarchmoney.com/*',
     'https://app.monarch.com/*',
     'https://api.monarchmoney.com/*',
@@ -31,7 +32,13 @@ const manifest = {
   icons: {
     128: 'icon-128.png',
   },
-  content_scripts: [],
+  content_scripts: [
+    {
+      matches: ['https://www.amazon.com/*'],
+      js: ['src/pages/content/amazonComExtractor.js'],
+      run_at: 'document_idle',
+    },
+  ],
   web_accessible_resources: [
     {
       resources: ['assets/js/*.js', 'assets/css/*.css', 'icon-128.png', 'icon-34.png'],

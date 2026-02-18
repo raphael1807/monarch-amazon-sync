@@ -1,4 +1,5 @@
 import { Order, fetchOrders } from '@root/src/shared/api/amazonApi';
+import { fetchAllPaymentTransactions, fetchOrderItems } from '@root/src/shared/api/amazonPaymentsApi';
 import reloadOnUpdate from 'virtual:reload-on-update-in-background-script';
 import 'webextension-polyfill';
 import { MonarchTransaction, getTransactions, updateMonarchTransaction } from '@root/src/shared/api/monarchApi';
@@ -201,6 +202,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handleDryRun(message.payload, sendResponse);
   } else if (message.action === Action.FullSync) {
     handleFullSync(message.payload, sendResponse);
+  } else if (message.action === Action.PaymentsLookup) {
+    fetchAllPaymentTransactions(message.payload?.maxPages || 15)
+      .then(transactions => sendResponse({ success: true, transactions }))
+      .catch(err => {
+        logger.error('Payments lookup failed', err);
+        sendResponse({ success: false, error: String(err) });
+      });
+  } else if (message.action === Action.FetchOrderItems) {
+    fetchOrderItems(message.payload?.orderId, message.payload?.marketplace)
+      .then(result => sendResponse({ success: true, ...result }))
+      .catch(err => {
+        logger.error('Fetch order items failed', err);
+        sendResponse({ success: false, error: String(err), items: [], orderDate: '' });
+      });
   } else {
     console.warn(`Unknown action: ${message.action}`);
   }

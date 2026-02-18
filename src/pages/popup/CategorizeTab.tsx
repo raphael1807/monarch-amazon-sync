@@ -25,8 +25,9 @@ import {
   findSiblingItems,
   parseSplitInvoiceOrderInfo,
 } from '@root/src/shared/utils/categoryMatcher';
-import { FaSearch, FaCheck, FaExclamationTriangle, FaTag, FaRobot } from 'react-icons/fa';
+import { FaSearch, FaCheck, FaExclamationTriangle, FaTag, FaRobot, FaCreditCard } from 'react-icons/fa';
 import { aiCategorizeTransactions } from '@root/src/shared/utils/aiCategorizer';
+import { findMatchingPayment, type PaymentTransaction } from '@root/src/shared/api/amazonPaymentsApi';
 import CategoryDropdown from './components/CategoryDropdown';
 
 type ScanResult = {
@@ -139,6 +140,9 @@ export default function CategorizeTab() {
   >(new Map());
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [paymentsLookup, setPaymentsLookup] = useState(false);
+  const [paymentsProgress, setPaymentsProgress] = useState<string | null>(null);
+  const [paymentsMatched, setPaymentsMatched] = useState(0);
   const savedDateRange = useRef<{ type: DateRangeOption; start?: string; end?: string } | null>(null);
   const progress = useStorage(progressStorage);
 
@@ -454,6 +458,145 @@ export default function CategorizeTab() {
       payload: {},
     });
   }, [unmatched, amazonConnected, appData.options]);
+
+  const handlePaymentsLookup = useCallback(async () => {
+    if (!appData.monarchKey) return;
+
+    setPaymentsLookup(true);
+    setPaymentsProgress('Fetching Amazon payments page...');
+    setPaymentsMatched(0);
+    setError(null);
+
+    try {
+      // Route through background service worker (uses content script for HTML extraction)
+      const paymentsResponse = await new Promise<{
+        success: boolean;
+        transactions?: PaymentTransaction[];
+        error?: string;
+      }>(resolve => chrome.runtime.sendMessage({ action: Action.PaymentsLookup, payload: { maxPages: 15 } }, resolve));
+
+      if (!paymentsResponse.success || !paymentsResponse.transactions) {
+        setPaymentsProgress(null);
+        setError(
+          paymentsResponse.error ||
+            'No transactions found on Amazon payments page. Make sure you are logged into Amazon.com.',
+        );
+        setPaymentsLookup(false);
+        return;
+      }
+
+      const payments = paymentsResponse.transactions;
+      setPaymentsProgress(`Found ${payments.length} payments. Matching to ${unmatched.length} transactions...`);
+
+      if (payments.length === 0) {
+        setPaymentsProgress(null);
+        setError('No transactions found on Amazon payments page. Make sure you are logged into Amazon.com.');
+        setPaymentsLookup(false);
+        return;
+      }
+
+      const categoryLookup = buildCategoryLookup(categories);
+      const newResults: ScanResult[] = [];
+      const stillUnmatched: UnmatchedResult[] = [];
+      let matched = 0;
+
+      for (let i = 0; i < unmatched.length; i++) {
+        const item = unmatched[i];
+        const absAmount = Math.abs(item.amount);
+
+        const payment = findMatchingPayment(payments, absAmount, item.date);
+
+        if (!payment) {
+          stillUnmatched.push(item);
+          continue;
+        }
+
+        matched++;
+        setPaymentsProgress(
+          `Matched ${matched}/${unmatched.length} — fetching order ${payment.orderId} (${payment.marketplace})...`,
+        );
+
+        // Route order item fetch through background service worker
+        const orderResponse = await new Promise<{ success: boolean; items: string[]; orderDate: string }>(resolve =>
+          chrome.runtime.sendMessage(
+            { action: Action.FetchOrderItems, payload: { orderId: payment.orderId, marketplace: payment.marketplace } },
+            resolve,
+          ),
+        );
+
+        const orderItems = orderResponse.success ? orderResponse.items : [];
+
+        if (orderItems.length === 0) {
+          stillUnmatched.push({
+            ...item,
+            notes:
+              item.notes || `Order #${payment.orderId} | ${payment.merchant} | ${payment.currency} $${payment.amount}`,
+            hasNotes: true,
+          });
+          continue;
+        }
+
+        const itemObjects = orderItems.map(title => ({ title, quantity: 1, price: 0 }));
+        const match = matchCategoryForItems(itemObjects, appData.options.categoryRules);
+
+        if (match) {
+          const categoryId = resolveRuleCategoryId(match.categoryName, categoryLookup);
+          if (categoryId) {
+            newResults.push({
+              transactionId: item.transactionId,
+              date: item.date,
+              amount: item.amount,
+              notes: `🌐 ${payment.marketplace.toUpperCase()} | Order #${payment.orderId}\n${orderItems.join('\n')}`,
+              itemTitles: orderItems,
+              currentCategory: item.currentCategory,
+              suggestedCategory: match.categoryName,
+              suggestedCategoryId: categoryId,
+              matchedKeyword: match.matchedKeyword,
+              confidence: match.confidence,
+              selected: true,
+            });
+            continue;
+          }
+        }
+
+        stillUnmatched.push({
+          ...item,
+          notes: `🌐 ${payment.marketplace.toUpperCase()} | Order #${payment.orderId}\n${orderItems.join('\n')}`,
+          hasNotes: true,
+        });
+      }
+
+      if (newResults.length > 0) {
+        setResults(prev => [...prev, ...newResults]);
+      }
+      setUnmatched(stillUnmatched);
+      setPaymentsMatched(matched);
+
+      const keywordMatched = newResults.length;
+      const enriched = matched - keywordMatched;
+      setPaymentsProgress(
+        `Done! ${matched} payments matched. ${keywordMatched} auto-categorized, ${enriched} enriched with items.`,
+      );
+
+      if (stats) {
+        setStats({
+          ...stats,
+          categorizable: stats.categorizable + keywordMatched,
+          noMatch: stillUnmatched.filter(u => u.hasNotes).length,
+          emptyNotes: stillUnmatched.filter(u => !u.hasNotes).length,
+        });
+      }
+
+      if (newResults.length > 0) {
+        setActiveSection('matched');
+      }
+    } catch (err) {
+      console.error('Payments lookup failed:', err);
+      setError(err instanceof Error ? err.message : 'Failed to look up Amazon payments');
+    } finally {
+      setPaymentsLookup(false);
+    }
+  }, [appData.monarchKey, appData.options.categoryRules, unmatched, categories, stats]);
 
   const handleAICategorize = useCallback(async () => {
     if (!appData.options.aiApiKey || unmatched.length === 0) return;
@@ -816,6 +959,31 @@ export default function CategorizeTab() {
           <p className="text-xs text-gray-500">
             These transactions couldn&apos;t be auto-categorized. Use AI, pick manually, or mark for later.
           </p>
+
+          {/* Payments Page Lookup */}
+          {!paymentsLookup && paymentsMatched === 0 && (
+            <Button
+              color="blue"
+              size="sm"
+              onClick={handlePaymentsLookup}
+              disabled={paymentsLookup || unmatched.length === 0}
+              className="w-full">
+              <FaCreditCard className="mr-2" /> Find orders via Amazon Payments Page
+            </Button>
+          )}
+          {paymentsLookup && paymentsProgress && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+              <p className="text-xs text-blue-700 font-medium">
+                <span className="animate-pulse">🔍</span> {paymentsProgress}
+              </p>
+            </div>
+          )}
+          {!paymentsLookup && paymentsMatched > 0 && paymentsProgress && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-2 flex items-center gap-2">
+              <FaCreditCard className="text-green-600" />
+              <p className="text-xs text-green-800 font-medium">{paymentsProgress}</p>
+            </div>
+          )}
 
           {/* AI Categorize Button */}
           {hasApiKey && aiResults.size === 0 && (

@@ -5,13 +5,23 @@
   "description": "Sync Amazon order details to Monarch transaction notes",
   "permissions": [
     "storage",
-    "downloads"
+    "downloads",
+    "scripting",
+    "tabs"
   ],
   "host_permissions": [
     "https://www.amazon.ca/*",
+    "https://www.amazon.com/*",
     "https://api.monarchmoney.com/*",
     "https://api.monarch.com/*",
     "https://*.monarch.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.amazon.com/*"],
+      "js": ["src/pages/content/amazonComExtractor.js"],
+      "run_at": "document_idle"
+    }
   ],
   "background": {
     "service_worker": "src/pages/background/index.js",
