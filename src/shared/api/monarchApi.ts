@@ -3,6 +3,21 @@ export type MonarchTransaction = {
   amount: number;
   date: string;
   notes: string;
+  category?: { id: string; name: string } | null;
+  tags?: { id: string; name: string }[];
+};
+
+export type MonarchCategory = {
+  id: string;
+  name: string;
+  group: { id: string; name: string };
+};
+
+export type MonarchTag = {
+  id: string;
+  name: string;
+  color: string;
+  order: number;
 };
 
 export async function updateMonarchTransaction(authKey: string, id: string, note: string) {
@@ -77,6 +92,14 @@ export async function getTransactions(
             pending
             date
             notes
+            category {
+              id
+              name
+            }
+            tags {
+              id
+              name
+            }
           }
         }
       }
@@ -95,6 +118,165 @@ export async function getTransactions(
   }
 
   return result.data.allTransactions.results;
+}
+
+export async function getCategories(authKey: string): Promise<MonarchCategory[]> {
+  const body = {
+    operationName: 'GetCategories',
+    variables: {},
+    query: `
+      query GetCategories {
+        categories {
+          id
+          name
+          group {
+            id
+            name
+            type
+          }
+        }
+      }
+    `,
+  };
+
+  const result = await graphQLRequest(authKey, body);
+
+  if (!result?.data?.categories) {
+    console.error('Unexpected Monarch categories response:', result);
+    if (result?.errors) {
+      throw new Error(`Monarch API error: ${JSON.stringify(result.errors)}`);
+    }
+    throw new Error('Invalid response from Monarch API when fetching categories');
+  }
+
+  return result.data.categories;
+}
+
+export async function updateTransactionCategory(authKey: string, id: string, categoryId: string) {
+  const body = {
+    operationName: 'Web_TransactionDrawerUpdateTransaction',
+    variables: {
+      input: {
+        id: id,
+        category: categoryId,
+      },
+    },
+    query: `
+      mutation Web_TransactionDrawerUpdateTransaction($input: UpdateTransactionMutationInput!) {
+        updateTransaction(input: $input) {
+          transaction {
+            id
+            amount
+            pending
+            date
+            category {
+              id
+              name
+            }
+          }
+          errors {
+            fieldErrors {
+              field
+              messages
+            }
+            message
+            code
+          }
+        }
+      }
+    `,
+  };
+
+  const result = await graphQLRequest(authKey, body);
+
+  if (result?.data?.updateTransaction?.errors?.length > 0) {
+    const errorMsg = result.data.updateTransaction.errors.map((e: { message?: string }) => e.message).join(', ');
+    throw new Error(`Failed to update transaction category: ${errorMsg}`);
+  }
+
+  return result;
+}
+
+export async function getTags(authKey: string): Promise<MonarchTag[]> {
+  const body = {
+    operationName: 'GetHouseholdTransactionTags',
+    variables: {},
+    query: `
+      query GetHouseholdTransactionTags($search: String, $limit: Int) {
+        householdTransactionTags(search: $search, limit: $limit) {
+          id
+          name
+          color
+          order
+        }
+      }
+    `,
+  };
+
+  const result = await graphQLRequest(authKey, body);
+  return result?.data?.householdTransactionTags ?? [];
+}
+
+export async function createTag(authKey: string, name: string, color: string = '#FF6B6B'): Promise<MonarchTag> {
+  const body = {
+    operationName: 'Common_CreateTransactionTag',
+    variables: { input: { name, color } },
+    query: `
+      mutation Common_CreateTransactionTag($input: CreateTransactionTagInput!) {
+        createTransactionTag(input: $input) {
+          tag {
+            id
+            name
+            color
+            order
+          }
+          errors {
+            message
+          }
+        }
+      }
+    `,
+  };
+
+  const result = await graphQLRequest(authKey, body);
+
+  if (result?.data?.createTransactionTag?.errors?.length > 0) {
+    const errorMsg = result.data.createTransactionTag.errors.map((e: { message?: string }) => e.message).join(', ');
+    throw new Error(`Failed to create tag: ${errorMsg}`);
+  }
+
+  return result.data.createTransactionTag.tag;
+}
+
+export async function setTransactionTags(authKey: string, transactionId: string, tagIds: string[]) {
+  const body = {
+    operationName: 'Web_SetTransactionTags',
+    variables: { input: { transactionId, tagIds } },
+    query: `
+      mutation Web_SetTransactionTags($input: SetTransactionTagsInput!) {
+        setTransactionTags(input: $input) {
+          errors {
+            fieldErrors { field messages }
+            message
+            code
+          }
+          transaction {
+            id
+            tags { id name }
+          }
+        }
+      }
+    `,
+  };
+
+  const result = await graphQLRequest(authKey, body);
+
+  if (result?.data?.setTransactionTags?.errors?.length > 0) {
+    const errorMsg = result.data.setTransactionTags.errors.map((e: { message?: string }) => e.message).join(', ');
+    throw new Error(`Failed to set tags: ${errorMsg}`);
+  }
+
+  return result;
 }
 
 // Retry delays in ms: 1s, 2s, 4s

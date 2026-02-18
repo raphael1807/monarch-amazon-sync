@@ -90,6 +90,9 @@ export function formatDateRange(entry: SyncRecord): string {
     '6months': 'Last 6 months',
     thisYear: 'This year',
     lastYear: 'Last year',
+    '2years': 'Last 2 years',
+    '3years': 'Last 3 years',
+    allTime: 'All time',
     custom: 'Custom',
   };
   return labels[entry.rangeType] || entry.rangeType;

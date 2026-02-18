@@ -3,6 +3,7 @@ import OptionsClean from './OptionsClean';
 import MainClean from './MainClean';
 import ManualBackfillClean from './ManualBackfillClean';
 import SyncHistoryTab from './components/SyncHistoryTab';
+import CategorizeTab from './CategorizeTab';
 import appStorage, { Page } from '@root/src/shared/storages/appStorage';
 
 const Popup = () => {
@@ -15,6 +16,8 @@ const Popup = () => {
     page = <ManualBackfillClean />;
   } else if (storage.page === Page.History) {
     page = <SyncHistoryTab />;
+  } else if (storage.page === Page.Categorize) {
+    page = <CategorizeTab />;
   } else {
     page = <MainClean />;
   }
@@ -29,7 +32,7 @@ const Popup = () => {
         </div>
 
         {/* Clean Tabs */}
-        <div className="flex gap-2 bg-gray-100 p-1.5 rounded-xl">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
           <TabButton active={storage.page === Page.Default} onClick={() => appStorage.patch({ page: Page.Default })}>
             🏠 Home
           </TabButton>
@@ -37,6 +40,11 @@ const Popup = () => {
             active={storage.page === Page.ManualBackfill}
             onClick={() => appStorage.patch({ page: Page.ManualBackfill })}>
             🔄 Sync
+          </TabButton>
+          <TabButton
+            active={storage.page === Page.Categorize}
+            onClick={() => appStorage.patch({ page: Page.Categorize })}>
+            🏷️ Sort
           </TabButton>
           <TabButton active={storage.page === Page.History} onClick={() => appStorage.patch({ page: Page.History })}>
             📜 History
@@ -56,7 +64,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   return (
     <button
       onClick={onClick}
-      className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+      className={`flex-1 px-2 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
         active ? 'bg-white text-gray-900 shadow-md' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
       }`}>
       {children}

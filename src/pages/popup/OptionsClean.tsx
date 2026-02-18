@@ -89,12 +89,39 @@ export function OptionsClean() {
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
         <ToggleSwitch
           checked={options.overrideTransactions}
-          label="Override Existing Notes"
+          label="Re-sync Already Synced"
           onChange={value => {
             appStorage.patch({ options: { ...options, overrideTransactions: value } });
           }}
         />
-        <p className="text-xs text-gray-500 mt-2">Replace notes that already exist in Monarch</p>
+        <p className="text-xs text-gray-500 mt-2">
+          <strong>OFF (default):</strong> Only adds item details to transactions that don&apos;t have notes yet.
+          <br />
+          <strong>ON:</strong> Overwrites existing notes — useful if you want to re-sync with updated data.
+        </p>
+      </div>
+
+      {/* Anthropic API Key */}
+      <div className="space-y-2">
+        <Label className="text-sm font-medium text-gray-700">🤖 Anthropic API Key (optional)</Label>
+        <TextInput
+          value={options?.aiApiKey || ''}
+          type="password"
+          placeholder="sk-ant-..."
+          onChange={e => {
+            appStorage.patch({ options: { ...options, aiApiKey: e.target.value || undefined } });
+          }}
+        />
+        {options?.aiApiKey ? (
+          <p className="text-xs text-green-600 font-medium">
+            ✅ API key saved ({options.aiApiKey.substring(0, 10)}...)
+          </p>
+        ) : (
+          <p className="text-xs text-gray-500">
+            Used by the Categorize tab to AI-classify transactions that keywords can&apos;t match. Uses Claude Haiku
+            (~$0.001/transaction). Leave blank to use keywords only.
+          </p>
+        )}
       </div>
 
       {/* Debug Actions */}

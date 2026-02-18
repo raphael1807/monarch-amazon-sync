@@ -10,6 +10,7 @@ export function EnhancedSettings() {
   const [merchant, setMerchant] = useState(appData.options.amazonMerchant || 'Amazon');
   const [notifications, setNotifications] = useState(appData.options.notifications ?? true);
   const [autoSync, setAutoSync] = useState(appData.options.syncEnabled || false);
+  const [aiKey, setAiKey] = useState(appData.options.aiApiKey || '');
 
   const saveSettings = async () => {
     await appStorage.patch({
@@ -20,6 +21,7 @@ export function EnhancedSettings() {
         amazonMerchant: merchant,
         notifications,
         syncEnabled: autoSync,
+        aiApiKey: aiKey || undefined,
       },
     });
     alert('Settings saved!');
@@ -92,6 +94,24 @@ export function EnhancedSettings() {
           <div className="text-xs text-gray-500">Automatically sync once per day</div>
         </div>
         <ToggleSwitch checked={autoSync} onChange={setAutoSync} />
+      </div>
+
+      {/* Claude API Key */}
+      <div className="space-y-2 p-3 bg-gray-50 rounded">
+        <Label htmlFor="ai-key" className="font-semibold">
+          🤖 Anthropic API Key (optional)
+        </Label>
+        <TextInput
+          id="ai-key"
+          type="password"
+          value={aiKey}
+          onChange={e => setAiKey(e.target.value)}
+          placeholder="sk-ant-..."
+        />
+        <p className="text-xs text-gray-500">
+          Used by the Categorize tab to AI-classify transactions that keywords can&apos;t match. Uses Claude Haiku
+          (~$0.001/transaction). Leave blank to use keywords only.
+        </p>
       </div>
 
       {/* Save Button */}

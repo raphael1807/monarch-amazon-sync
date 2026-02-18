@@ -5,6 +5,7 @@ export enum Page {
   Options = 'options',
   ManualBackfill = 'manualBackfill',
   History = 'history',
+  Categorize = 'categorize',
 }
 
 export enum AuthStatus {
@@ -65,7 +66,16 @@ export type DateRangeOption =
   | '6months'
   | 'thisYear'
   | 'lastYear'
+  | '2years'
+  | '3years'
+  | 'allTime'
   | 'custom';
+
+export type CategoryRule = {
+  keywords: string[];
+  categoryName: string;
+  priority?: number;
+};
 
 type Options = {
   overrideTransactions: boolean;
@@ -78,6 +88,10 @@ type Options = {
   customStartDate?: string; // ISO format
   customEndDate?: string; // ISO format
   dryRunMode?: boolean; // Preview mode - no changes to Monarch (default: false = live mode)
+  categoryRules?: CategoryRule[]; // User-defined keyword-to-category overrides
+  defaultCategory?: string; // Fallback category name for unmatched items
+  skipAlreadyCategorized?: boolean; // Skip transactions not in "general [shopping]" or "uncategorized" (default: true)
+  aiApiKey?: string; // Anthropic Claude API key for AI-powered categorization of unmatched transactions
 };
 
 type State = {

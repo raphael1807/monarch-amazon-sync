@@ -32,6 +32,9 @@ export function DateRangeSelector({ selectedRange, customStart, customEnd, onCha
       '6months': '~30-50 orders',
       thisYear: '~50-100 orders',
       lastYear: '~50-100 orders',
+      '2years': '~100-200 orders',
+      '3years': '~150-300 orders',
+      allTime: 'All orders',
       custom: 'Varies',
     };
     return estimates[range];
@@ -129,6 +132,66 @@ export function DateRangeSelector({ selectedRange, customStart, customEnd, onCha
           <label htmlFor="range-thisYear" className="text-sm cursor-pointer flex-1">
             <div className="font-medium">This year ({new Date().getFullYear()})</div>
             <div className="text-xs text-gray-500">{getEstimate('thisYear')}</div>
+          </label>
+        </div>
+
+        {/* Last year */}
+        <div className="flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors border-gray-200 hover:border-blue-300">
+          <Radio
+            id="range-lastYear"
+            name="dateRange"
+            value="lastYear"
+            checked={selectedRange === 'lastYear'}
+            onChange={() => handleRangeChange('lastYear')}
+          />
+          <label htmlFor="range-lastYear" className="text-sm cursor-pointer flex-1">
+            <div className="font-medium">Last year ({new Date().getFullYear() - 1})</div>
+            <div className="text-xs text-gray-500">{getEstimate('lastYear')}</div>
+          </label>
+        </div>
+
+        {/* 2 years */}
+        <div className="flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors border-gray-200 hover:border-blue-300">
+          <Radio
+            id="range-2years"
+            name="dateRange"
+            value="2years"
+            checked={selectedRange === '2years'}
+            onChange={() => handleRangeChange('2years')}
+          />
+          <label htmlFor="range-2years" className="text-sm cursor-pointer flex-1">
+            <div className="font-medium">Last 2 years</div>
+            <div className="text-xs text-gray-500">{getEstimate('2years')}</div>
+          </label>
+        </div>
+
+        {/* 3 years */}
+        <div className="flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors border-gray-200 hover:border-blue-300">
+          <Radio
+            id="range-3years"
+            name="dateRange"
+            value="3years"
+            checked={selectedRange === '3years'}
+            onChange={() => handleRangeChange('3years')}
+          />
+          <label htmlFor="range-3years" className="text-sm cursor-pointer flex-1">
+            <div className="font-medium">Last 3 years</div>
+            <div className="text-xs text-gray-500">{getEstimate('3years')}</div>
+          </label>
+        </div>
+
+        {/* All time */}
+        <div className="flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors border-gray-200 hover:border-blue-300">
+          <Radio
+            id="range-allTime"
+            name="dateRange"
+            value="allTime"
+            checked={selectedRange === 'allTime'}
+            onChange={() => handleRangeChange('allTime')}
+          />
+          <label htmlFor="range-allTime" className="text-sm cursor-pointer flex-1">
+            <div className="font-medium">All time (since 2020)</div>
+            <div className="text-xs text-gray-500">{getEstimate('allTime')}</div>
           </label>
         </div>
       </div>

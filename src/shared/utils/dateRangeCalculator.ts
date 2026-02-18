@@ -47,6 +47,20 @@ export function calculateDateRange(
       endDate = new Date(now.getFullYear() - 1, 11, 31); // Dec 31 last year
       break;
 
+    case '2years':
+      startDate = new Date();
+      startDate.setFullYear(startDate.getFullYear() - 2);
+      break;
+
+    case '3years':
+      startDate = new Date();
+      startDate.setFullYear(startDate.getFullYear() - 3);
+      break;
+
+    case 'allTime':
+      startDate = new Date(2020, 0, 1);
+      break;
+
     case 'custom':
       if (customStart && customEnd) {
         startDate = new Date(customStart);
