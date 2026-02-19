@@ -343,6 +343,70 @@ export async function getTransactionsByTag(
   return result.data.allTransactions.results;
 }
 
+export async function getTransactionsByCategoryIds(
+  authKey: string,
+  categoryIds: string[],
+  startDate?: Date,
+  endDate?: Date,
+  limit = 1000,
+): Promise<MonarchTransaction[]> {
+  const body = {
+    operationName: 'Web_GetTransactionsList',
+    variables: {
+      orderBy: 'date',
+      limit,
+      filters: {
+        categories: categoryIds,
+        accounts: [],
+        tags: [],
+        startDate: startDate?.toISOString().split('T')[0] ?? undefined,
+        endDate: endDate?.toISOString().split('T')[0] ?? undefined,
+      },
+    },
+    query: `
+      query Web_GetTransactionsList($offset: Int, $limit: Int, $filters: TransactionFilterInput, $orderBy: TransactionOrdering) {
+        allTransactions(filters: $filters) {
+          totalCount
+          results(offset: $offset, limit: $limit, orderBy: $orderBy) {
+            id
+            amount
+            pending
+            date
+            notes
+            originalMerchant: merchant {
+              id
+              name
+            }
+            category {
+              id
+              name
+            }
+            account {
+              id
+              displayName
+            }
+            tags {
+              id
+              name
+            }
+          }
+        }
+      }
+    `,
+  };
+
+  const result = await graphQLRequest(authKey, body);
+
+  if (!result?.data?.allTransactions?.results) {
+    if (result?.errors) {
+      throw new Error(`Monarch API error: ${JSON.stringify(result.errors)}`);
+    }
+    throw new Error('Invalid response from Monarch API');
+  }
+
+  return result.data.allTransactions.results;
+}
+
 export async function getAccounts(
   authKey: string,
 ): Promise<
