@@ -33,14 +33,23 @@ import {
   parseItemsFromNotes,
   buildCategoryLookup,
 } from '@root/src/shared/utils/categoryMatcher';
-import { runAutoTagger, type AutoTagResult } from '@root/src/shared/utils/autoTagger';
-import { buildMerchantTaxMap, applyLearnedTaxRates } from '@root/src/shared/utils/taxRateLearner';
+import {
+  runAutoTagger,
+  type AutoTagResult,
+  isMissingExpenseTag,
+  isMissingRevenueTag,
+  isMissingTaxTag,
+  needsBillTag,
+  getExpenseTagName,
+} from '@root/src/shared/utils/autoTagger';
+import { buildMerchantTaxMap, applyLearnedTaxRates, getMerchantTaxTag } from '@root/src/shared/utils/taxRateLearner';
 import {
   calculateQuarterlyTax,
   type QuarterSummary,
   type TaxableItem,
 } from '@root/src/shared/utils/quarterlyTaxCalculator';
 import { Action } from '@root/src/shared/types';
+import { type PreviewRow, downloadPreviewCsv } from '@root/src/shared/utils/previewExporter';
 import {
   FaPlay,
   FaCheck,
@@ -54,6 +63,7 @@ import {
   FaSync,
   FaTags,
   FaSearch,
+  FaEye,
 } from 'react-icons/fa';
 
 type StepStatus = 'idle' | 'running' | 'done' | 'error' | 'review' | 'skipped';
@@ -107,6 +117,8 @@ function ComptabiliteTab() {
   const [pipeline, setPipeline] = useState<PipelineState>({ ...INITIAL_PIPELINE });
   const [running, setRunning] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [previewMode, setPreviewMode] = useState(true);
+  const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
   const [allTags, setAllTags] = useState<MonarchTag[]>([]);
   const [allCategories, setAllCategories] = useState<MonarchCategory[]>([]);
   const [settingsForm, setSettingsForm] = useState({
@@ -161,6 +173,10 @@ function ComptabiliteTab() {
     }
   }, [updateStep]);
 
+  const txMerchant = (tx: MonarchTransaction) =>
+    (tx as MonarchTransaction & { originalMerchant?: { name: string } }).originalMerchant?.name ?? '';
+  const txTags = (tx: MonarchTransaction) => (tx.tags ?? []).map(t => t.name).join('; ');
+
   // --- Step 1: Auto-Categorize ---
   const runAutoCategorize = useCallback(async () => {
     if (!authKey) return;
@@ -181,10 +197,9 @@ function ComptabiliteTab() {
       const txns = await getTransactionsByCategoryIds(authKey, uncatIds);
 
       let categorized = 0;
+      const rows: PreviewRow[] = [];
       for (const tx of txns) {
-        const extended = tx as MonarchTransaction & { originalMerchant?: { name: string } };
-        const merchantName = extended.originalMerchant?.name ?? '';
-
+        const merchantName = txMerchant(tx);
         let targetCategory = findMerchantCategory(merchantName);
 
         if (!targetCategory && tx.notes) {
@@ -196,21 +211,36 @@ function ComptabiliteTab() {
         if (targetCategory) {
           const catEntry = catLookup.get(targetCategory.toLowerCase());
           if (catEntry) {
-            await updateTransactionCategory(authKey, tx.id, catEntry.id);
+            if (previewMode) {
+              rows.push({
+                step: 'Auto-Categorize',
+                action: 'Change Category',
+                date: tx.date,
+                merchant: merchantName,
+                amount: tx.amount,
+                currentCategory: tx.category?.name ?? 'uncategorized',
+                currentTags: txTags(tx),
+                change: 'category',
+                newValue: targetCategory,
+              });
+            } else {
+              await updateTransactionCategory(authKey, tx.id, catEntry.id);
+            }
             categorized++;
           }
         }
       }
 
+      if (previewMode) setPreviewRows(prev => [...prev, ...rows]);
       updateStep('autoCategorize', {
         status: 'done',
-        message: `${categorized}/${txns.length} categorized`,
+        message: `${categorized}/${txns.length} ${previewMode ? 'would be categorized' : 'categorized'}`,
         count: categorized,
       });
     } catch (err) {
       updateStep('autoCategorize', { status: 'error', message: err instanceof Error ? err.message : 'Unknown error' });
     }
-  }, [authKey, allCategories, storage.options.categoryRules, updateStep]);
+  }, [authKey, allCategories, storage.options.categoryRules, previewMode, updateStep]);
 
   // --- Step 1.5: Auto-Tag ---
   const runAutoTag = useCallback(async () => {
@@ -226,7 +256,9 @@ function ComptabiliteTab() {
       const tagCache = new Map<string, MonarchTag>();
       tags.forEach(t => tagCache.set(t.name, t));
 
+      const dummyTag = (name: string): MonarchTag => ({ id: `preview-${name}`, name, color: '', order: 0 });
       const findOrCreate = async (name: string): Promise<MonarchTag> => {
+        if (previewMode) return tagCache.get(name) ?? dummyTag(name);
         const existing = tagCache.get(name);
         if (existing) return existing;
         const created = await createTag(authKey, name, '#6B7280');
@@ -234,54 +266,133 @@ function ComptabiliteTab() {
         return created;
       };
 
-      updateStep('autoTag', { message: 'Auto-tagging expenses, revenues, insurance, bills...' });
+      const noopSetTags = async () => {};
+      const actualSetTags = previewMode ? noopSetTags : setTransactionTags;
+
+      updateStep('autoTag', { message: 'Scanning for missing tags...' });
+
+      // Collect preview rows by scanning business txns
+      const rows: PreviewRow[] = [];
+      const businessCatIds = categories
+        .filter(c => ['rapha_business', 'farmzz'].includes(c.group?.name ?? ''))
+        .map(c => c.id);
+      const incomeCatIds = categories
+        .filter(c =>
+          ['paycheck [+]', 'rapha income [+]', 'other income [+]'].includes(`${c.name} [${c.group?.name ?? ''}]`),
+        )
+        .map(c => c.id);
+      const insuranceCatIds = categories
+        .filter(c =>
+          ['house_insurance [financial]', 'auto_insurance [financial]', 'invalidity_insurance [financial]'].includes(
+            `${c.name} [${c.group?.name ?? ''}]`,
+          ),
+        )
+        .map(c => c.id);
+
+      // Scan and tag (or preview)
       const result: AutoTagResult = await runAutoTagger(
         authKey,
         tags,
         categories,
         getTransactionsByCategoryIds,
-        setTransactionTags,
+        actualSetTags as typeof setTransactionTags,
         findOrCreate,
       );
 
-      // Also apply learned tax rates
+      if (previewMode) {
+        // Build preview rows by re-scanning what would change
+        const scan = async (
+          catIds: string[],
+          step: string,
+          action: string,
+          check: (tx: MonarchTransaction) => string | null,
+        ) => {
+          if (catIds.length === 0) return;
+          const txns = await getTransactionsByCategoryIds(authKey, catIds);
+          for (const tx of txns) {
+            const newTag = check(tx);
+            if (newTag) {
+              rows.push({
+                step,
+                action,
+                date: tx.date,
+                merchant: txMerchant(tx),
+                amount: tx.amount,
+                currentCategory: tx.category?.name ?? '',
+                currentTags: txTags(tx),
+                change: 'add tag',
+                newValue: newTag,
+              });
+            }
+          }
+        };
+
+        await scan(businessCatIds, 'Auto-Tag', 'Add expense tag', tx =>
+          isMissingExpenseTag(tx) ? getExpenseTagName(tx.category?.name ?? '') : null,
+        );
+        await scan(incomeCatIds, 'Auto-Tag', 'Add revenue tag', tx =>
+          tx.amount > 0 && isMissingRevenueTag(tx) ? '[+] rapha, revenue; to add' : null,
+        );
+        await scan(insuranceCatIds, 'Auto-Tag', 'Add insurance tax tag', tx =>
+          isMissingTaxTag(tx) ? 'txs assur [9%]' : null,
+        );
+        await scan(businessCatIds, 'Auto-Tag', 'Add bill tag', tx => (needsBillTag(tx) ? '🧾 add bill' : null));
+      }
+
+      // Also handle learned tax rates
       updateStep('autoTag', { message: 'Learning tax rates from history...' });
-      const businessCatIds = categories
-        .filter(c => ['rapha_business', 'farmzz'].includes(c.group?.name ?? ''))
-        .map(c => c.id);
+      let taxApplied = 0;
       if (businessCatIds.length > 0) {
         const allBusinessTxns = await getTransactionsByCategoryIds(authKey, businessCatIds);
         const merchantTaxMap = buildMerchantTaxMap(allBusinessTxns as never[]);
-        const taxResult = await applyLearnedTaxRates(
-          authKey,
-          allBusinessTxns as never[],
-          merchantTaxMap,
-          findOrCreate,
-          setTransactionTags,
-        );
-        const totalTagged =
-          result.expensesTagged +
-          result.revenuesTagged +
-          result.insuranceTagged +
-          result.billsTagged +
-          taxResult.applied;
-        updateStep('autoTag', {
-          status: 'done',
-          message: `${result.expensesTagged} expenses, ${result.revenuesTagged} revenues, ${result.insuranceTagged} insurance, ${taxResult.applied} tax rates, ${result.billsTagged} bills`,
-          count: totalTagged,
-        });
-      } else {
-        const totalTagged = result.expensesTagged + result.revenuesTagged + result.insuranceTagged + result.billsTagged;
-        updateStep('autoTag', {
-          status: 'done',
-          message: `${result.expensesTagged} exp, ${result.revenuesTagged} rev, ${result.insuranceTagged} ins, ${result.billsTagged} bills`,
-          count: totalTagged,
-        });
+
+        if (previewMode) {
+          for (const tx of allBusinessTxns) {
+            const hasTax = (tx.tags ?? []).some(t => t.name.startsWith('txs [') || t.name.startsWith('txs assur'));
+            if (hasTax) continue;
+            const merchant = txMerchant(tx);
+            const tag = getMerchantTaxTag(merchant, merchantTaxMap);
+            if (tag) {
+              rows.push({
+                step: 'Auto-Tag',
+                action: 'Add tax rate (learned)',
+                date: tx.date,
+                merchant,
+                amount: tx.amount,
+                currentCategory: tx.category?.name ?? '',
+                currentTags: txTags(tx),
+                change: 'add tag',
+                newValue: tag,
+              });
+              taxApplied++;
+            }
+          }
+        } else {
+          const taxResult = await applyLearnedTaxRates(
+            authKey,
+            allBusinessTxns as never[],
+            merchantTaxMap,
+            findOrCreate,
+            setTransactionTags,
+          );
+          taxApplied = taxResult.applied;
+        }
       }
+
+      if (previewMode) setPreviewRows(prev => [...prev, ...rows]);
+
+      const totalTagged =
+        result.expensesTagged + result.revenuesTagged + result.insuranceTagged + result.billsTagged + taxApplied;
+      const suffix = previewMode ? ' (preview)' : '';
+      updateStep('autoTag', {
+        status: 'done',
+        message: `${result.expensesTagged} exp, ${result.revenuesTagged} rev, ${result.insuranceTagged} ins, ${taxApplied} tax, ${result.billsTagged} bills${suffix}`,
+        count: totalTagged,
+      });
     } catch (err) {
       updateStep('autoTag', { status: 'error', message: err instanceof Error ? err.message : 'Unknown error' });
     }
-  }, [authKey, allTags, allCategories, updateStep]);
+  }, [authKey, allTags, allCategories, previewMode, updateStep]);
 
   // --- Step 2: Bills Processor ---
   const runBills = useCallback(async () => {
@@ -314,17 +425,33 @@ function ComptabiliteTab() {
       }
 
       let processed = 0;
+      const rows: PreviewRow[] = [];
       for (const bill of toProcess) {
-        updateStep('bills', { message: `Processing ${processed + 1}/${toProcess.length}...` });
-        const newNotes = (bill.transaction.notes ?? '') + formatBillNote(bill.breakdown);
-        await updateMonarchTransaction(authKey, bill.transaction.id, newNotes);
-
-        const newTagIds = removeTagFromList(bill.transaction.tags ?? [], billTag.id);
-        await setTransactionTags(authKey, bill.transaction.id, newTagIds);
+        if (previewMode) {
+          rows.push({
+            step: 'Bills',
+            action: 'Add facture to notes',
+            date: bill.transaction.date,
+            merchant: txMerchant(bill.transaction),
+            amount: bill.transaction.amount,
+            currentCategory: bill.transaction.category?.name ?? '',
+            currentTags: txTags(bill.transaction),
+            change: 'append notes + remove 🧾 tag',
+            newValue: `Sous-total: $${bill.breakdown.subtotal} | TPS: $${bill.breakdown.tps} | TVQ: $${bill.breakdown.tvq}`,
+          });
+        } else {
+          updateStep('bills', { message: `Processing ${processed + 1}/${toProcess.length}...` });
+          const newNotes = (bill.transaction.notes ?? '') + formatBillNote(bill.breakdown);
+          await updateMonarchTransaction(authKey, bill.transaction.id, newNotes);
+          const newTagIds = removeTagFromList(bill.transaction.tags ?? [], billTag.id);
+          await setTransactionTags(authKey, bill.transaction.id, newTagIds);
+        }
         processed++;
       }
 
-      updateStep('bills', { status: 'done', message: `${processed} bills added`, count: processed });
+      if (previewMode) setPreviewRows(prev => [...prev, ...rows]);
+      const suffix = previewMode ? ' (preview)' : '';
+      updateStep('bills', { status: 'done', message: `${processed} bills${suffix}`, count: processed });
     } catch (err) {
       updateStep('bills', { status: 'error', message: err instanceof Error ? err.message : 'Unknown error' });
     }
@@ -631,20 +758,24 @@ function ComptabiliteTab() {
   const runAll = useCallback(async () => {
     setRunning(true);
     setPipeline({ ...INITIAL_PIPELINE });
+    setPreviewRows([]);
 
-    await runAmazonSync();
+    if (!previewMode) await runAmazonSync();
     await runAutoCategorize();
     await runAutoTag();
     await runBills();
-    await runExpenses();
-    await runRevenues();
+    if (!previewMode) {
+      await runExpenses();
+      await runRevenues();
+    }
     await runDime();
     await runSnapshots();
-    await runBackup();
+    if (!previewMode) await runBackup();
     await runQuarterly();
 
     setRunning(false);
   }, [
+    previewMode,
     runAmazonSync,
     runAutoCategorize,
     runAutoTag,
@@ -656,6 +787,10 @@ function ComptabiliteTab() {
     runBackup,
     runQuarterly,
   ]);
+
+  const downloadPreview = useCallback(() => {
+    if (previewRows.length > 0) downloadPreviewCsv(previewRows);
+  }, [previewRows]);
 
   if (!isConnected) {
     return (
@@ -670,7 +805,18 @@ function ComptabiliteTab() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-base font-bold text-gray-900">Comptabilité</h2>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPreviewMode(!previewMode)}
+            className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-lg transition-colors ${
+              previewMode
+                ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                : 'bg-green-100 text-green-700 border border-green-300'
+            }`}
+            title={previewMode ? 'Preview mode: generates CSV, no changes' : 'Live mode: applies changes to Monarch'}>
+            <FaEye size={10} />
+            {previewMode ? 'Preview' : 'Live'}
+          </button>
           <button
             onClick={() => setShowSettings(!showSettings)}
             className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
@@ -684,12 +830,24 @@ function ComptabiliteTab() {
               </>
             ) : (
               <>
-                <FaPlay className="mr-1" /> Run All
+                <FaPlay className="mr-1" /> {previewMode ? 'Preview All' : 'Run All'}
               </>
             )}
           </Button>
         </div>
       </div>
+
+      {/* Preview Mode Banner */}
+      {previewMode && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-[10px] text-amber-700">
+          <strong>Preview mode ON</strong> — No changes will be made. A CSV will be generated showing what WOULD change.
+          {previewRows.length > 0 && (
+            <button onClick={downloadPreview} className="ml-2 underline font-bold">
+              Download CSV ({previewRows.length} changes)
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Settings Panel */}
       {showSettings && (
