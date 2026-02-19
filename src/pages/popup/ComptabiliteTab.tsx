@@ -28,7 +28,6 @@ import { postToGoogleSheet } from '@root/src/shared/api/googleSheetsApi';
 import { addSnapshot, getLatestSnapshot, type Snapshot } from '@root/src/shared/storages/snapshotStorage';
 import { findMerchantCategory } from '@root/src/shared/utils/merchantRules';
 import {
-  isUncategorized,
   matchCategoryForItems,
   parseItemsFromNotes,
   buildCategoryLookup,
@@ -41,6 +40,10 @@ import {
   isMissingTaxTag,
   needsBillTag,
   getExpenseTagName,
+  isBusinessCategoryObj,
+  isIncomeCategoryObj,
+  isInsuranceCategoryObj,
+  isUncategorizedCategoryObj,
 } from '@root/src/shared/utils/autoTagger';
 import { buildMerchantTaxMap, applyLearnedTaxRates, getMerchantTaxTag } from '@root/src/shared/utils/taxRateLearner';
 import {
@@ -187,7 +190,7 @@ function ComptabiliteTab() {
       if (allCategories.length === 0) setAllCategories(categories);
       const catLookup = buildCategoryLookup(categories);
 
-      const uncatIds = categories.filter(c => isUncategorized(`${c.name} [${c.group?.name ?? ''}]`)).map(c => c.id);
+      const uncatIds = categories.filter(c => isUncategorizedCategoryObj(c)).map(c => c.id);
       if (uncatIds.length === 0) {
         updateStep('autoCategorize', { status: 'done', message: 'No uncategorized categories found', count: 0 });
         return;
@@ -273,21 +276,9 @@ function ComptabiliteTab() {
 
       // Collect preview rows by scanning business txns
       const rows: PreviewRow[] = [];
-      const businessCatIds = categories
-        .filter(c => ['rapha_business', 'farmzz'].includes(c.group?.name ?? ''))
-        .map(c => c.id);
-      const incomeCatIds = categories
-        .filter(c =>
-          ['paycheck [+]', 'rapha income [+]', 'other income [+]'].includes(`${c.name} [${c.group?.name ?? ''}]`),
-        )
-        .map(c => c.id);
-      const insuranceCatIds = categories
-        .filter(c =>
-          ['house_insurance [financial]', 'auto_insurance [financial]', 'invalidity_insurance [financial]'].includes(
-            `${c.name} [${c.group?.name ?? ''}]`,
-          ),
-        )
-        .map(c => c.id);
+      const businessCatIds = categories.filter(isBusinessCategoryObj).map(c => c.id);
+      const incomeCatIds = categories.filter(isIncomeCategoryObj).map(c => c.id);
+      const insuranceCatIds = categories.filter(isInsuranceCategoryObj).map(c => c.id);
 
       // Scan and tag (or preview)
       const result: AutoTagResult = await runAutoTagger(
@@ -721,14 +712,8 @@ function ComptabiliteTab() {
     try {
       const categories = allCategories.length > 0 ? allCategories : await getCategories(authKey);
 
-      const businessCatIds = categories
-        .filter(c => ['rapha_business', 'farmzz'].includes(c.group?.name ?? ''))
-        .map(c => c.id);
-      const incomeCatIds = categories
-        .filter(c =>
-          ['paycheck [+]', 'rapha income [+]', 'other income [+]'].includes(`${c.name} [${c.group?.name ?? ''}]`),
-        )
-        .map(c => c.id);
+      const businessCatIds = categories.filter(isBusinessCategoryObj).map(c => c.id);
+      const incomeCatIds = categories.filter(isIncomeCategoryObj).map(c => c.id);
 
       const year = new Date().getFullYear();
       const yearStart = new Date(year, 0, 1);

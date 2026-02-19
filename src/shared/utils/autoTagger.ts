@@ -2,13 +2,9 @@ import type { MonarchTransaction, MonarchTag, MonarchCategory } from '../api/mon
 
 export const BUSINESS_CATEGORY_GROUPS = ['rapha_business', 'farmzz'];
 
-export const INCOME_CATEGORIES_FOR_REVENUE = ['paycheck [+]', 'rapha income [+]', 'other income [+]'];
+export const INCOME_CATEGORY_NAMES = ['paycheck', 'rapha income', 'other income'];
 
-export const INSURANCE_CATEGORIES = [
-  'house_insurance [financial]',
-  'auto_insurance [financial]',
-  'invalidity_insurance [financial]',
-];
+export const INSURANCE_CATEGORY_NAMES = ['house_insurance', 'auto_insurance', 'invalidity_insurance'];
 
 const EXPENSE_TAG_PATTERNS = [
   '[-] rapha, expenses; to add',
@@ -32,14 +28,41 @@ export function isBusinessCategory(categoryName: string | null | undefined): boo
   return group ? BUSINESS_CATEGORY_GROUPS.includes(group) : false;
 }
 
+export function isBusinessCategoryObj(cat: MonarchCategory): boolean {
+  const groupName = cat.group?.name?.toLowerCase() ?? '';
+  return BUSINESS_CATEGORY_GROUPS.some(g => groupName === g || groupName.includes(g));
+}
+
+export function isIncomeCategoryObj(cat: MonarchCategory): boolean {
+  const catName = cat.name?.toLowerCase() ?? '';
+  return INCOME_CATEGORY_NAMES.some(n => catName === n || catName.startsWith(n));
+}
+
+export function isInsuranceCategoryObj(cat: MonarchCategory): boolean {
+  const catName = cat.name?.toLowerCase() ?? '';
+  return INSURANCE_CATEGORY_NAMES.some(n => catName === n || catName.startsWith(n)) || catName.includes('insurance');
+}
+
+export function isUncategorizedCategoryObj(cat: MonarchCategory): boolean {
+  const catName = cat.name?.toLowerCase() ?? '';
+  const groupName = cat.group?.name?.toLowerCase() ?? '';
+  return (
+    catName.includes('uncategorized') ||
+    catName === 'general' ||
+    (catName === 'general' && groupName.includes('shopping'))
+  );
+}
+
 export function isIncomeCategory(categoryName: string | null | undefined): boolean {
   if (!categoryName) return false;
-  return INCOME_CATEGORIES_FOR_REVENUE.includes(categoryName);
+  const lower = categoryName.toLowerCase();
+  return INCOME_CATEGORY_NAMES.some(n => lower.startsWith(n));
 }
 
 export function isInsuranceCategory(categoryName: string | null | undefined): boolean {
   if (!categoryName) return false;
-  return INSURANCE_CATEGORIES.includes(categoryName);
+  const lower = categoryName.toLowerCase();
+  return INSURANCE_CATEGORY_NAMES.some(n => lower.startsWith(n)) || lower.includes('insurance');
 }
 
 function hasAnyTag(tags: { name: string }[], patterns: string[]): boolean {
@@ -100,17 +123,9 @@ export async function runAutoTagger(
     errors: [],
   };
 
-  const businessCatIds = allCategories
-    .filter(c => BUSINESS_CATEGORY_GROUPS.includes(c.group?.name ?? ''))
-    .map(c => c.id);
-
-  const incomeCatIds = allCategories
-    .filter(c => INCOME_CATEGORIES_FOR_REVENUE.includes(`${c.name} [${c.group?.name ?? ''}]`))
-    .map(c => c.id);
-
-  const insuranceCatIds = allCategories
-    .filter(c => INSURANCE_CATEGORIES.includes(`${c.name} [${c.group?.name ?? ''}]`))
-    .map(c => c.id);
+  const businessCatIds = allCategories.filter(isBusinessCategoryObj).map(c => c.id);
+  const incomeCatIds = allCategories.filter(isIncomeCategoryObj).map(c => c.id);
+  const insuranceCatIds = allCategories.filter(isInsuranceCategoryObj).map(c => c.id);
 
   // P1: Tag missing expenses
   if (businessCatIds.length > 0) {

@@ -8,8 +8,8 @@ import {
   isMissingTaxTag,
   needsBillTag,
   BUSINESS_CATEGORY_GROUPS,
-  INCOME_CATEGORIES_FOR_REVENUE,
-  INSURANCE_CATEGORIES,
+  INCOME_CATEGORY_NAMES,
+  INSURANCE_CATEGORY_NAMES,
 } from './autoTagger';
 
 const makeTx = (category: string, tags: string[] = [], notes = '') => ({
@@ -45,28 +45,30 @@ describe('autoTagger', () => {
 
   describe('isIncomeCategory', () => {
     it('returns true for paycheck', () => {
+      expect(isIncomeCategory('paycheck')).toBe(true);
       expect(isIncomeCategory('paycheck [+]')).toBe(true);
     });
 
     it('returns true for rapha income', () => {
-      expect(isIncomeCategory('rapha income [+]')).toBe(true);
+      expect(isIncomeCategory('rapha income')).toBe(true);
     });
 
     it('returns false for interest and government', () => {
-      expect(isIncomeCategory('interest [+]')).toBe(false);
-      expect(isIncomeCategory('government [+]')).toBe(false);
+      expect(isIncomeCategory('interest')).toBe(false);
+      expect(isIncomeCategory('government')).toBe(false);
     });
   });
 
   describe('isInsuranceCategory', () => {
     it('returns true for insurance categories', () => {
+      expect(isInsuranceCategory('house_insurance')).toBe(true);
+      expect(isInsuranceCategory('auto_insurance')).toBe(true);
+      expect(isInsuranceCategory('invalidity_insurance')).toBe(true);
       expect(isInsuranceCategory('house_insurance [financial]')).toBe(true);
-      expect(isInsuranceCategory('auto_insurance [financial]')).toBe(true);
-      expect(isInsuranceCategory('invalidity_insurance [financial]')).toBe(true);
     });
 
     it('returns false for non-insurance', () => {
-      expect(isInsuranceCategory('financial_fees [financial]')).toBe(false);
+      expect(isInsuranceCategory('financial_fees')).toBe(false);
     });
   });
 
@@ -154,12 +156,12 @@ describe('autoTagger', () => {
       expect(BUSINESS_CATEGORY_GROUPS).toContain('farmzz');
     });
 
-    it('INCOME_CATEGORIES_FOR_REVENUE includes paycheck', () => {
-      expect(INCOME_CATEGORIES_FOR_REVENUE).toContain('paycheck [+]');
+    it('INCOME_CATEGORY_NAMES includes paycheck', () => {
+      expect(INCOME_CATEGORY_NAMES).toContain('paycheck');
     });
 
-    it('INSURANCE_CATEGORIES has 3 entries', () => {
-      expect(INSURANCE_CATEGORIES.length).toBe(3);
+    it('INSURANCE_CATEGORY_NAMES has 3 entries', () => {
+      expect(INSURANCE_CATEGORY_NAMES.length).toBe(3);
     });
   });
 });
