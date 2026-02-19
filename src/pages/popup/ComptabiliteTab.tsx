@@ -4,13 +4,17 @@ import useStorage from '@root/src/shared/hooks/useStorage';
 import appStorage, { AuthStatus } from '@root/src/shared/storages/appStorage';
 import {
   getTransactionsByTag,
+  getTransactionsByCategoryIds,
+  getCategories,
   getTags,
   setTransactionTags,
   updateMonarchTransaction,
+  updateTransactionCategory,
   createTag,
   getAccounts,
   MonarchTag,
   MonarchTransaction,
+  MonarchCategory,
 } from '@root/src/shared/api/monarchApi';
 import {
   analyzeTransactionsForBills,
@@ -22,6 +26,21 @@ import {
 import { transactionToExpenseRow, transactionToRevenueRow } from '@root/src/shared/utils/sheetsExporter';
 import { postToGoogleSheet } from '@root/src/shared/api/googleSheetsApi';
 import { addSnapshot, getLatestSnapshot, type Snapshot } from '@root/src/shared/storages/snapshotStorage';
+import { findMerchantCategory } from '@root/src/shared/utils/merchantRules';
+import {
+  isUncategorized,
+  matchCategoryForItems,
+  parseItemsFromNotes,
+  buildCategoryLookup,
+} from '@root/src/shared/utils/categoryMatcher';
+import { runAutoTagger, type AutoTagResult } from '@root/src/shared/utils/autoTagger';
+import { buildMerchantTaxMap, applyLearnedTaxRates } from '@root/src/shared/utils/taxRateLearner';
+import {
+  calculateQuarterlyTax,
+  type QuarterSummary,
+  type TaxableItem,
+} from '@root/src/shared/utils/quarterlyTaxCalculator';
+import { Action } from '@root/src/shared/types';
 import {
   FaPlay,
   FaCheck,
@@ -32,6 +51,9 @@ import {
   FaChurch,
   FaChartLine,
   FaDownload,
+  FaSync,
+  FaTags,
+  FaSearch,
 } from 'react-icons/fa';
 
 type StepStatus = 'idle' | 'running' | 'done' | 'error' | 'review' | 'skipped';
@@ -43,12 +65,16 @@ type StepState = {
 };
 
 type PipelineState = {
+  amazonSync: StepState;
+  autoCategorize: StepState;
+  autoTag: StepState;
   bills: StepState;
   expenses: StepState;
   revenues: StepState;
   dime: StepState & { grossRevenue?: number; dimeAmount?: number; dimeGiven?: number };
   snapshots: StepState & { current?: Snapshot; previous?: Snapshot };
   backup: StepState;
+  quarterly: StepState & { quarters?: QuarterSummary[] };
 };
 
 const INITIAL_STEP: StepState = { status: 'idle', message: '', count: 0 };
@@ -63,19 +89,26 @@ const TAG_NAMES = {
   REVENUE_ADDED: '[+] rapha, revenue; added',
 } as const;
 
+const INITIAL_PIPELINE: PipelineState = {
+  amazonSync: { ...INITIAL_STEP },
+  autoCategorize: { ...INITIAL_STEP },
+  autoTag: { ...INITIAL_STEP },
+  bills: { ...INITIAL_STEP },
+  expenses: { ...INITIAL_STEP },
+  revenues: { ...INITIAL_STEP },
+  dime: { ...INITIAL_STEP },
+  snapshots: { ...INITIAL_STEP },
+  backup: { ...INITIAL_STEP },
+  quarterly: { ...INITIAL_STEP },
+};
+
 function ComptabiliteTab() {
   const storage = useStorage(appStorage);
-  const [pipeline, setPipeline] = useState<PipelineState>({
-    bills: { ...INITIAL_STEP },
-    expenses: { ...INITIAL_STEP },
-    revenues: { ...INITIAL_STEP },
-    dime: { ...INITIAL_STEP },
-    snapshots: { ...INITIAL_STEP },
-    backup: { ...INITIAL_STEP },
-  });
+  const [pipeline, setPipeline] = useState<PipelineState>({ ...INITIAL_PIPELINE });
   const [running, setRunning] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [allTags, setAllTags] = useState<MonarchTag[]>([]);
+  const [allCategories, setAllCategories] = useState<MonarchCategory[]>([]);
   const [settingsForm, setSettingsForm] = useState({
     googleScriptUrl: storage.options.googleScriptUrl ?? '',
     expenseSheetTab: storage.options.expenseSheetTab ?? "expenses '25 [-]",
@@ -116,6 +149,139 @@ function ComptabiliteTab() {
     });
     setShowSettings(false);
   }, [storage.options, settingsForm]);
+
+  // --- Step 0: Amazon Sync ---
+  const runAmazonSync = useCallback(async () => {
+    updateStep('amazonSync', { status: 'running', message: 'Triggering Amazon sync...' });
+    try {
+      chrome.runtime.sendMessage({ action: Action.FullSync });
+      updateStep('amazonSync', { status: 'done', message: 'Sync triggered (runs in background)', count: 1 });
+    } catch (err) {
+      updateStep('amazonSync', { status: 'error', message: err instanceof Error ? err.message : 'Unknown error' });
+    }
+  }, [updateStep]);
+
+  // --- Step 1: Auto-Categorize ---
+  const runAutoCategorize = useCallback(async () => {
+    if (!authKey) return;
+    updateStep('autoCategorize', { status: 'running', message: 'Fetching categories...' });
+
+    try {
+      const categories = allCategories.length > 0 ? allCategories : await getCategories(authKey);
+      if (allCategories.length === 0) setAllCategories(categories);
+      const catLookup = buildCategoryLookup(categories);
+
+      const uncatIds = categories.filter(c => isUncategorized(`${c.name} [${c.group?.name ?? ''}]`)).map(c => c.id);
+      if (uncatIds.length === 0) {
+        updateStep('autoCategorize', { status: 'done', message: 'No uncategorized categories found', count: 0 });
+        return;
+      }
+
+      updateStep('autoCategorize', { message: 'Scanning uncategorized transactions...' });
+      const txns = await getTransactionsByCategoryIds(authKey, uncatIds);
+
+      let categorized = 0;
+      for (const tx of txns) {
+        const extended = tx as MonarchTransaction & { originalMerchant?: { name: string } };
+        const merchantName = extended.originalMerchant?.name ?? '';
+
+        let targetCategory = findMerchantCategory(merchantName);
+
+        if (!targetCategory && tx.notes) {
+          const items = parseItemsFromNotes(tx.notes);
+          const match = matchCategoryForItems(items, storage.options.categoryRules);
+          if (match) targetCategory = match.categoryName;
+        }
+
+        if (targetCategory) {
+          const catEntry = catLookup.get(targetCategory.toLowerCase());
+          if (catEntry) {
+            await updateTransactionCategory(authKey, tx.id, catEntry.id);
+            categorized++;
+          }
+        }
+      }
+
+      updateStep('autoCategorize', {
+        status: 'done',
+        message: `${categorized}/${txns.length} categorized`,
+        count: categorized,
+      });
+    } catch (err) {
+      updateStep('autoCategorize', { status: 'error', message: err instanceof Error ? err.message : 'Unknown error' });
+    }
+  }, [authKey, allCategories, storage.options.categoryRules, updateStep]);
+
+  // --- Step 1.5: Auto-Tag ---
+  const runAutoTag = useCallback(async () => {
+    if (!authKey) return;
+    updateStep('autoTag', { status: 'running', message: 'Loading tags & categories...' });
+
+    try {
+      const tags = allTags.length > 0 ? allTags : await getTags(authKey);
+      if (allTags.length === 0) setAllTags(tags);
+      const categories = allCategories.length > 0 ? allCategories : await getCategories(authKey);
+      if (allCategories.length === 0) setAllCategories(categories);
+
+      const tagCache = new Map<string, MonarchTag>();
+      tags.forEach(t => tagCache.set(t.name, t));
+
+      const findOrCreate = async (name: string): Promise<MonarchTag> => {
+        const existing = tagCache.get(name);
+        if (existing) return existing;
+        const created = await createTag(authKey, name, '#6B7280');
+        tagCache.set(name, created);
+        return created;
+      };
+
+      updateStep('autoTag', { message: 'Auto-tagging expenses, revenues, insurance, bills...' });
+      const result: AutoTagResult = await runAutoTagger(
+        authKey,
+        tags,
+        categories,
+        getTransactionsByCategoryIds,
+        setTransactionTags,
+        findOrCreate,
+      );
+
+      // Also apply learned tax rates
+      updateStep('autoTag', { message: 'Learning tax rates from history...' });
+      const businessCatIds = categories
+        .filter(c => ['rapha_business', 'farmzz'].includes(c.group?.name ?? ''))
+        .map(c => c.id);
+      if (businessCatIds.length > 0) {
+        const allBusinessTxns = await getTransactionsByCategoryIds(authKey, businessCatIds);
+        const merchantTaxMap = buildMerchantTaxMap(allBusinessTxns as never[]);
+        const taxResult = await applyLearnedTaxRates(
+          authKey,
+          allBusinessTxns as never[],
+          merchantTaxMap,
+          findOrCreate,
+          setTransactionTags,
+        );
+        const totalTagged =
+          result.expensesTagged +
+          result.revenuesTagged +
+          result.insuranceTagged +
+          result.billsTagged +
+          taxResult.applied;
+        updateStep('autoTag', {
+          status: 'done',
+          message: `${result.expensesTagged} expenses, ${result.revenuesTagged} revenues, ${result.insuranceTagged} insurance, ${taxResult.applied} tax rates, ${result.billsTagged} bills`,
+          count: totalTagged,
+        });
+      } else {
+        const totalTagged = result.expensesTagged + result.revenuesTagged + result.insuranceTagged + result.billsTagged;
+        updateStep('autoTag', {
+          status: 'done',
+          message: `${result.expensesTagged} exp, ${result.revenuesTagged} rev, ${result.insuranceTagged} ins, ${result.billsTagged} bills`,
+          count: totalTagged,
+        });
+      }
+    } catch (err) {
+      updateStep('autoTag', { status: 'error', message: err instanceof Error ? err.message : 'Unknown error' });
+    }
+  }, [authKey, allTags, allCategories, updateStep]);
 
   // --- Step 2: Bills Processor ---
   const runBills = useCallback(async () => {
@@ -420,27 +586,76 @@ function ComptabiliteTab() {
     }
   }, [authKey, updateStep]);
 
+  // --- Step 9: Quarterly Tax Summary ---
+  const runQuarterly = useCallback(async () => {
+    if (!authKey) return;
+    updateStep('quarterly', { status: 'running', message: 'Calculating quarterly taxes...' });
+
+    try {
+      const categories = allCategories.length > 0 ? allCategories : await getCategories(authKey);
+
+      const businessCatIds = categories
+        .filter(c => ['rapha_business', 'farmzz'].includes(c.group?.name ?? ''))
+        .map(c => c.id);
+      const incomeCatIds = categories
+        .filter(c =>
+          ['paycheck [+]', 'rapha income [+]', 'other income [+]'].includes(`${c.name} [${c.group?.name ?? ''}]`),
+        )
+        .map(c => c.id);
+
+      const year = new Date().getFullYear();
+      const yearStart = new Date(year, 0, 1);
+
+      const expenses =
+        businessCatIds.length > 0 ? await getTransactionsByCategoryIds(authKey, businessCatIds, yearStart) : [];
+      const revenues =
+        incomeCatIds.length > 0 ? await getTransactionsByCategoryIds(authKey, incomeCatIds, yearStart) : [];
+
+      const toTaxItem = (tx: MonarchTransaction): TaxableItem => {
+        const taxTag = (tx.tags ?? []).find(t => t.name.startsWith('txs [') || t.name.startsWith('txs assur'));
+        return { date: tx.date, amount: tx.amount, taxTag: taxTag?.name ?? '' };
+      };
+
+      const quarters = calculateQuarterlyTax(revenues.map(toTaxItem), expenses.map(toTaxItem), year);
+
+      setPipeline(prev => ({
+        ...prev,
+        quarterly: { ...prev.quarterly, status: 'done', message: `${year} Q1-Q4 calculated`, count: 4, quarters },
+      }));
+    } catch (err) {
+      updateStep('quarterly', { status: 'error', message: err instanceof Error ? err.message : 'Unknown error' });
+    }
+  }, [authKey, allTags, allCategories, updateStep]);
+
   // --- Run All Pipeline ---
   const runAll = useCallback(async () => {
     setRunning(true);
-    setPipeline({
-      bills: { ...INITIAL_STEP },
-      expenses: { ...INITIAL_STEP },
-      revenues: { ...INITIAL_STEP },
-      dime: { ...INITIAL_STEP },
-      snapshots: { ...INITIAL_STEP },
-      backup: { ...INITIAL_STEP },
-    });
+    setPipeline({ ...INITIAL_PIPELINE });
 
+    await runAmazonSync();
+    await runAutoCategorize();
+    await runAutoTag();
     await runBills();
     await runExpenses();
     await runRevenues();
     await runDime();
     await runSnapshots();
     await runBackup();
+    await runQuarterly();
 
     setRunning(false);
-  }, [runBills, runExpenses, runRevenues, runDime, runSnapshots, runBackup]);
+  }, [
+    runAmazonSync,
+    runAutoCategorize,
+    runAutoTag,
+    runBills,
+    runExpenses,
+    runRevenues,
+    runDime,
+    runSnapshots,
+    runBackup,
+    runQuarterly,
+  ]);
 
   if (!isConnected) {
     return (
@@ -544,6 +759,27 @@ function ComptabiliteTab() {
       {/* Pipeline Steps */}
       <div className="space-y-2">
         <StepCard
+          icon={<FaSync />}
+          label="Step 0: Amazon Sync"
+          state={pipeline.amazonSync}
+          onRun={runAmazonSync}
+          disabled={running}
+        />
+        <StepCard
+          icon={<FaSearch />}
+          label="Step 1: Auto-Categorize"
+          state={pipeline.autoCategorize}
+          onRun={runAutoCategorize}
+          disabled={running}
+        />
+        <StepCard
+          icon={<FaTags />}
+          label="Step 1.5: Auto-Tag"
+          state={pipeline.autoTag}
+          onRun={runAutoTag}
+          disabled={running}
+        />
+        <StepCard
           icon={<FaFileInvoiceDollar />}
           label="Step 2: Bills (factures)"
           state={pipeline.bills}
@@ -594,6 +830,16 @@ function ComptabiliteTab() {
           onRun={runBackup}
           disabled={running}
         />
+        <StepCard
+          icon={<FaChartLine />}
+          label="Step 8: Quarterly TPS/TVQ"
+          state={pipeline.quarterly}
+          onRun={runQuarterly}
+          disabled={running}
+        />
+        {pipeline.quarterly.status === 'done' && pipeline.quarterly.quarters && (
+          <QuarterlyDisplay quarters={pipeline.quarterly.quarters} />
+        )}
       </div>
     </div>
   );
@@ -756,6 +1002,28 @@ function MetricCard({
           {delta.diff.toLocaleString(undefined, { maximumFractionDigits: 0 })} ({delta.pct}%)
         </div>
       )}
+    </div>
+  );
+}
+
+function QuarterlyDisplay({ quarters }: { quarters: QuarterSummary[] }) {
+  return (
+    <div className="ml-6 p-3 bg-blue-50 rounded-xl border border-blue-200 space-y-2">
+      <div className="text-[10px] font-bold text-blue-800 mb-1">TPS/TVQ par trimestre</div>
+      <div className="grid grid-cols-4 gap-1">
+        {quarters.map(q => (
+          <div key={q.quarter} className="text-center">
+            <div className="text-[9px] font-bold text-blue-700">{q.label}</div>
+            <div className="text-[8px] text-gray-500">
+              TPS: <span className={q.netTps >= 0 ? 'text-red-600' : 'text-green-600'}>${q.netTps.toFixed(0)}</span>
+            </div>
+            <div className="text-[8px] text-gray-500">
+              TVQ: <span className={q.netTvq >= 0 ? 'text-red-600' : 'text-green-600'}>${q.netTvq.toFixed(0)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="text-[8px] text-gray-400 mt-1">Net positif = vous devez. Net négatif = remboursement.</div>
     </div>
   );
 }
