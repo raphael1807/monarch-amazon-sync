@@ -1,0 +1,251 @@
+IncomeCreate group
+income [+]Edit
+💵
+paycheck [+]
+🏢
+rapha income [+]
+💸
+interest [+]
+💰
+other income [+]
+😔
+refund [+]
+Custom
+🏛️
+government [+]
+Custom
+Create Category
+ExpensesCreate group
+foodEdit
+🍏
+groceries [food]
+🍽
+restaurants [food]
+☕️
+coffee shop [food]
+Create Category
+autoEdit
+🚃
+public_transit [auto]
+⛽️
+gas [auto]
+🔧
+maintenance [auto]
+🏢
+parking&tolls [auto]
+🚕
+taxi&ride_shares [auto]
+🚗
+auto_payment [auto]
+Create Category
+housingEdit
+🏠
+rent [housing]
+🔨
+home_improvement [housing]
+🪑
+furniture [housing]
+⚡️
+electricity [housing]
+🌐
+internet [housing]
+💧
+water [housing]
+🗑
+garbage [housing]
+🏠
+mortgage [housing]
+Create Category
+health & fitnessEdit
+💊
+medical [health]
+💉
+suppléments [health]
+Custom
+🦷
+dentist [health]
+🛁
+spa [health]
+Custom
+🦾
+coach [fitness]
+Custom
+💪
+gym [fitness]
+🥋
+martial_arts [fitness]
+Custom
+🏋️
+gear [fitness]
+Custom
+💆‍♂️
+recovery [fitness]
+Custom
+🚲
+bike [fitness]
+Custom
+Create Category
+personalEdit
+🧑‍⚖️
+administrative [personal]
+📱
+phone [personal]
+💇
+haircut [personal]
+Custom
+🔄
+subscriptions [personal]
+Custom
+🏫
+education [personal]
+🎥
+entertainment & recreation [personal]
+😜
+fun_money [personal]
+🏝
+vacation [personal]
+🧼
+beauty [personal]
+Custom
+🎁
+gifts [bday/christmas]
+Custom
+🎓
+personal; student_loans
+🐶
+personal; pets
+Create Category
+shoppingEdit
+🛍
+general [shopping]
+👕
+clothing [shopping]
+🖥
+electronics [shopping]
+Create Category
+rapha_businessEdit
+📣
+advertising [rapha_business]
+📞
+utilities&communication [rapha_business]
+👪
+employee_wages [rapha_business]
+🍴
+travel & meals [rapha_business]
+🚖
+auto_expenses [rapha_business]
+📁
+insurance [rapha_business]
+📎
+office_supplies [rapha_business]
+🏢
+office_rent [rapha_business]
+📦
+postage & shipping [rapha_business]
+🍎
+formation [rapha_business]
+Custom
+💻
+hardware [rapha_business]
+Custom
+💿
+softwares [rapha_business]
+Custom
+👔
+other [rapha_business]
+Custom
+Create Category
+farmzzEdit
+📣
+advertising [farmzz]
+Custom
+📞
+utilities&communication [farmzz]
+Custom
+👪
+employee_wages [farmzz]
+Custom
+🍴
+travel&meals [farmzz]
+Custom
+🚖
+auto_expenses [farmzz]
+Custom
+📎
+office_supplies [farmzz]
+Custom
+📂
+insurance [farmzz]
+Custom
+🏢
+office_rent [farmzz]
+Custom
+🍎
+formation [farmzz]
+Custom
+💿
+softwares [farmzz]
+Custom
+Create Category
+otherEdit
+❓
+uncategorized [others]
+💲
+miscellaneous [others]
+💳
+other_expense [others]
+Custom
+💸
+check [others]
+Create Category
+financialEdit
+💰
+loan_repayment [financial]
+🗄
+financial&legal_services [financial]
+🏦
+financial_fees [financial]
+🏧
+cash&ATM [financial]
+🏛️
+taxes_tps&tvq [financial]
+👨‍⚖️
+impôts [financial]
+Custom
+🎗
+charity [financial]
+⛪
+dîme; 10% [financial]
+Custom
+🎁
+gifts [financial]
+☂️
+house_insurance [financial]
+☂️
+auto_insurance [financial]
+Custom
+☂️
+invalidity_insurance [financial]
+Custom
+Create Category
+childrenEdit
+⚽️
+child_activities [children]
+👶
+child_care [children]
+Create Category
+TransfersCreate group
+transfersEdit
+🔁
+transfer [transfers]
+💳
+credit_card_payment [transfers]
+⚖️
+balance_adjustments [transfers]
+💰
+overdraft_protection [transfers]
+Custom
+🔄
+refund [transfers]
+Custom
+Create Category
