@@ -2,7 +2,7 @@ import type { MonarchTransaction, MonarchTag, MonarchCategory } from '../api/mon
 
 export const BUSINESS_CATEGORY_GROUPS = ['rapha_business', 'farmzz'];
 
-export const INCOME_CATEGORY_NAMES = ['paycheck', 'rapha income', 'other income'];
+export const INCOME_CATEGORY_NAMES = ['paycheck', 'rapha income'];
 
 export const INSURANCE_CATEGORY_NAMES = ['house_insurance', 'auto_insurance', 'invalidity_insurance'];
 

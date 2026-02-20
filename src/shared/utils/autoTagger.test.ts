@@ -53,9 +53,10 @@ describe('autoTagger', () => {
       expect(isIncomeCategory('rapha income')).toBe(true);
     });
 
-    it('returns false for interest and government', () => {
+    it('returns false for interest, government, and other income', () => {
       expect(isIncomeCategory('interest')).toBe(false);
       expect(isIncomeCategory('government')).toBe(false);
+      expect(isIncomeCategory('other income')).toBe(false);
     });
   });
 
