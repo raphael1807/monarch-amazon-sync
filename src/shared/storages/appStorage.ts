@@ -6,6 +6,7 @@ export enum Page {
   ManualBackfill = 'manualBackfill',
   History = 'history',
   Categorize = 'categorize',
+  Comptabilite = 'comptabilite',
 }
 
 export enum AuthStatus {
@@ -92,6 +93,10 @@ type Options = {
   defaultCategory?: string; // Fallback category name for unmatched items
   skipAlreadyCategorized?: boolean; // Skip transactions not in "general [shopping]" or "uncategorized" (default: true)
   aiApiKey?: string; // Anthropic Claude API key for AI-powered categorization of unmatched transactions
+  googleScriptUrl?: string;
+  expenseSheetTab?: string;
+  revenueSheetTab?: string;
+  dimePercentage?: number;
 };
 
 type State = {

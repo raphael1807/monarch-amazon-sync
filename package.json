@@ -17,6 +17,8 @@
     "lint:fix": "pnpm lint --fix",
     "prettier": "prettier . --write",
     "prepare": "husky install",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "release": "dotenv release-it"
   },
   "type": "module",

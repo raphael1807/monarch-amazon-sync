@@ -4,6 +4,7 @@ import MainClean from './MainClean';
 import ManualBackfillClean from './ManualBackfillClean';
 import SyncHistoryTab from './components/SyncHistoryTab';
 import CategorizeTab from './CategorizeTab';
+import ComptabiliteTab from './ComptabiliteTab';
 import appStorage, { Page } from '@root/src/shared/storages/appStorage';
 
 const Popup = () => {
@@ -18,6 +19,8 @@ const Popup = () => {
     page = <SyncHistoryTab />;
   } else if (storage.page === Page.Categorize) {
     page = <CategorizeTab />;
+  } else if (storage.page === Page.Comptabilite) {
+    page = <ComptabiliteTab />;
   } else {
     page = <MainClean />;
   }
@@ -48,6 +51,11 @@ const Popup = () => {
           </TabButton>
           <TabButton active={storage.page === Page.History} onClick={() => appStorage.patch({ page: Page.History })}>
             📜 History
+          </TabButton>
+          <TabButton
+            active={storage.page === Page.Comptabilite}
+            onClick={() => appStorage.patch({ page: Page.Comptabilite })}>
+            💼 Compta
           </TabButton>
           <TabButton active={storage.page === Page.Options} onClick={() => appStorage.patch({ page: Page.Options })}>
             ⚙️ Settings
